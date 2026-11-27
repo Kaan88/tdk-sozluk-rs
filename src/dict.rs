@@ -382,7 +382,9 @@ impl Store {
             .ok()?;
         let mut out = (0, 0, 0);
         let rows = st
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)))
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?.max(0) as u64))
+            })
             .ok()?;
         for (s, n) in rows.flatten() {
             match s.as_str() {
@@ -398,8 +400,9 @@ impl Store {
         self.cache
             .as_ref()
             .and_then(|c| {
-                c.query_row("SELECT COUNT(*) FROM gts", [], |r| r.get(0))
+                c.query_row("SELECT COUNT(*) FROM gts", [], |r| r.get::<_, i64>(0))
                     .ok()
+                    .map(|n| n.max(0) as u64)
             })
             .unwrap_or(0)
     }

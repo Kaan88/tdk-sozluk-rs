@@ -34,7 +34,12 @@ impl Index {
         for line in HEADWORDS.lines() {
             if let Some(h) = line.strip_prefix('#') {
                 if let Some(at) = h.find("fetched ") {
-                    fetched = h[at + 8..].split(',').next().unwrap_or("").trim().to_string();
+                    fetched = h[at + 8..]
+                        .split(',')
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
                 }
                 continue;
             }
@@ -61,7 +66,15 @@ impl Index {
             }
         }
         by_key.sort();
-        Index { words, by_key, by_lower, by_fold, stems, fetched, multiword }
+        Index {
+            words,
+            by_key,
+            by_lower,
+            by_fold,
+            stems,
+            fetched,
+            multiword,
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -119,7 +132,9 @@ impl Index {
                 }
             }
         }
-        let start = self.by_key.partition_point(|(k, _)| k.as_str() < q.as_str());
+        let start = self
+            .by_key
+            .partition_point(|(k, _)| k.as_str() < q.as_str());
         let mut prefixed: Vec<u32> = self.by_key[start..]
             .iter()
             .take_while(|(k, _)| k.starts_with(&q))
@@ -130,7 +145,9 @@ impl Index {
         prefixed.sort_by_key(|&i| (self.words[i as usize].chars().count(), i));
         out.extend(prefixed);
         out.truncate(limit);
-        out.into_iter().map(|i| self.words[i as usize].as_str()).collect()
+        out.into_iter()
+            .map(|i| self.words[i as usize].as_str())
+            .collect()
     }
 }
 
@@ -154,7 +171,11 @@ pub struct Entry {
 }
 
 fn s(v: &Value, k: &str) -> String {
-    v.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string()
+    v.get(k)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string()
 }
 
 /// TDK's `gts` answer (a list of entries, or `{"error": …}`) as entries.
@@ -176,7 +197,12 @@ pub fn parse(json: &str) -> Option<Vec<Entry>> {
                                 tags: m
                                     .get("ozelliklerListe")
                                     .and_then(Value::as_array)
-                                    .map(|os| os.iter().map(|o| s(o, "tam_adi")).filter(|t| !t.is_empty()).collect())
+                                    .map(|os| {
+                                        os.iter()
+                                            .map(|o| s(o, "tam_adi"))
+                                            .filter(|t| !t.is_empty())
+                                            .collect()
+                                    })
                                     .unwrap_or_default(),
                                 text: s(m, "anlam"),
                                 example: m
@@ -204,7 +230,12 @@ pub fn parse(json: &str) -> Option<Vec<Entry>> {
                 idioms: e
                     .get("atasozu")
                     .and_then(Value::as_array)
-                    .map(|a| a.iter().map(|x| s(x, "madde")).filter(|x| !x.is_empty()).collect())
+                    .map(|a| {
+                        a.iter()
+                            .map(|x| s(x, "madde"))
+                            .filter(|x| !x.is_empty())
+                            .collect()
+                    })
                     .unwrap_or_default(),
             })
             .collect(),
@@ -231,12 +262,14 @@ pub struct Store {
 
 fn inflate(blob: &[u8]) -> Option<String> {
     let mut out = String::new();
-    flate2::read::ZlibDecoder::new(blob).read_to_string(&mut out).ok()?;
+    flate2::read::ZlibDecoder::new(blob)
+        .read_to_string(&mut out)
+        .ok()?;
     Some(out)
 }
 
 /// Where the crawl's `gts.sqlite` may be: `$SOZLUK_DB`, beside the program, in the app's data
-/// folder, then in the subtitle skill's assets.
+/// folder.
 pub fn find_crawl_db(data_dir: Option<&Path>) -> Option<PathBuf> {
     let mut c: Vec<PathBuf> = Vec::new();
     if let Ok(p) = std::env::var("SOZLUK_DB") {
@@ -250,12 +283,6 @@ pub fn find_crawl_db(data_dir: Option<&Path>) -> Option<PathBuf> {
     if let Some(d) = data_dir {
         c.push(d.join("gts.sqlite"));
     }
-    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
-        c.push(
-            PathBuf::from(home)
-                .join(".claude/skills/turkish-subtitle-translation/assets/tdk/gts.sqlite"),
-        );
-    }
     c.into_iter().find(|p| p.is_file())
 }
 
@@ -263,7 +290,11 @@ impl Store {
     pub fn open(data_dir: Option<&Path>) -> Store {
         let crawl_path = find_crawl_db(data_dir);
         let crawl = crawl_path.as_ref().and_then(|p| {
-            Connection::open_with_flags(p, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX).ok()
+            Connection::open_with_flags(
+                p,
+                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )
+            .ok()
         });
         let cache_path = data_dir.map(|d| d.join("live-cache.sqlite"));
         let cache = cache_path.as_ref().and_then(|p| {
@@ -275,7 +306,12 @@ impl Store {
             .ok()?;
             Some(c)
         });
-        Store { crawl, crawl_path, cache, cache_path }
+        Store {
+            crawl,
+            crawl_path,
+            cache,
+            cache_path,
+        }
     }
 
     pub fn has_crawl(&self) -> bool {
@@ -285,7 +321,9 @@ impl Store {
     fn in_crawl(&self, w: &str) -> Option<(String, Option<String>)> {
         let c = self.crawl.as_ref()?;
         let row: Option<(String, Vec<u8>)> = c
-            .query_row("SELECT status, data FROM gts WHERE word = ?1", [w], |r| Ok((r.get(0)?, r.get(1)?)))
+            .query_row("SELECT status, data FROM gts WHERE word = ?1", [w], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
             .optional()
             .ok()?;
         let (status, data) = row?;
@@ -294,9 +332,11 @@ impl Store {
 
     fn in_cache(&self, w: &str) -> Option<(String, Option<String>)> {
         let c = self.cache.as_ref()?;
-        c.query_row("SELECT status, json FROM gts WHERE word = ?1", [w], |r| Ok((r.get(0)?, r.get(1)?)))
-            .optional()
-            .ok()?
+        c.query_row("SELECT status, json FROM gts WHERE word = ?1", [w], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .optional()
+        .ok()?
     }
 
     /// The entries for one headword. TDK's search ignores circumflexes, so `hala` brings `hâlâ`
@@ -337,9 +377,13 @@ impl Store {
     /// Counts in the crawl's database: (found, not found, to retry).
     pub fn crawl_counts(&self) -> Option<(u64, u64, u64)> {
         let c = self.crawl.as_ref()?;
-        let mut st = c.prepare("SELECT status, COUNT(*) FROM gts GROUP BY status").ok()?;
+        let mut st = c
+            .prepare("SELECT status, COUNT(*) FROM gts GROUP BY status")
+            .ok()?;
         let mut out = (0, 0, 0);
-        let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?))).ok()?;
+        let rows = st
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)))
+            .ok()?;
         for (s, n) in rows.flatten() {
             match s.as_str() {
                 "ok" => out.0 = n,
@@ -353,7 +397,10 @@ impl Store {
     pub fn cache_count(&self) -> u64 {
         self.cache
             .as_ref()
-            .and_then(|c| c.query_row("SELECT COUNT(*) FROM gts", [], |r| r.get(0)).ok())
+            .and_then(|c| {
+                c.query_row("SELECT COUNT(*) FROM gts", [], |r| r.get(0))
+                    .ok()
+            })
             .unwrap_or(0)
     }
 }
@@ -368,7 +415,11 @@ pub fn fetch_live(w: &str) -> Result<Option<String>, String> {
     match resp {
         Ok(r) => {
             let body = r.into_string().map_err(|e| e.to_string())?;
-            Ok(if body.trim_start().starts_with('[') { Some(body) } else { None })
+            Ok(if body.trim_start().starts_with('[') {
+                Some(body)
+            } else {
+                None
+            })
         }
         Err(ureq::Error::Status(code, _)) => Err(format!("HTTP {code}")),
         Err(e) => Err(e.to_string()),
@@ -379,7 +430,9 @@ fn encode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }

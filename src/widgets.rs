@@ -14,12 +14,20 @@ pub const CARD_RADIUS: f32 = 8.0;
 
 /// 0 → 1 as the pointer rests on something, for its fill.
 pub fn hover_t(anim: &mut Animator, id: impl Hash, hovered: bool) -> f32 {
-    anim.value(("hover", id), if hovered { 1.0_f32 } else { 0.0 }, fluent::FADE)
+    anim.value(
+        ("hover", id),
+        if hovered { 1.0_f32 } else { 0.0 },
+        fluent::FADE,
+    )
 }
 
 /// A press that sinks the fill a little further.
 pub fn press_t(anim: &mut Animator, id: impl Hash, pressed: bool) -> f32 {
-    anim.value(("press", id), if pressed { 1.0_f32 } else { 0.0 }, fluent::FADE)
+    anim.value(
+        ("press", id),
+        if pressed { 1.0_f32 } else { 0.0 },
+        fluent::FADE,
+    )
 }
 
 /// A button with only an icon: transparent at rest, the hover fill under the pointer.
@@ -115,18 +123,41 @@ pub fn segmented_icons(
         }
         // The ink follows the thumb: accent where it sits, muted elsewhere.
         let near = 1.0 - ((thumb.cx() - s.cx()).abs() / seg_w).min(1.0);
-        p.icon(g, 14.0, s.cx(), s.cy(), mix(c.pal.muted, c.pal.accent, near));
+        p.icon(
+            g,
+            14.0,
+            s.cx(),
+            s.cy(),
+            mix(c.pal.muted, c.pal.accent, near),
+        );
     }
     segs
 }
 
 /// A rounded chip; returns its width.
-pub fn chip(p: &mut Painter, anim: &mut Animator, c: &Colors, x: f32, y: f32, label: &str, id: impl Hash, hovered: bool) -> Rect {
+pub fn chip(
+    p: &mut Painter,
+    anim: &mut Animator,
+    c: &Colors,
+    x: f32,
+    y: f32,
+    label: &str,
+    id: impl Hash,
+    hovered: bool,
+) -> Rect {
     let w = p.measure(Face::Ui, 12.5, label).ceil() + 20.0;
     let r = Rect::new(x, y, w, 24.0);
     let h = hover_t(anim, id, hovered);
     p.frame(r, 12.0, mix(c.chip, c.pal.hover, h), c.pal.line);
-    p.text(Face::Ui, 12.5, r.x + 10.0, r.cy(), label, mix(c.pal.text, c.pal.accent, h), f32::INFINITY);
+    p.text(
+        Face::Ui,
+        12.5,
+        r.x + 10.0,
+        r.cy(),
+        label,
+        mix(c.pal.text, c.pal.accent, h),
+        f32::INFINITY,
+    );
     r
 }
 
@@ -154,7 +185,11 @@ pub fn chip_rows(
         rects.push(r);
         cx += r.w + 6.0;
     }
-    let h = if labels.is_empty() { 0.0 } else { cy - y + 24.0 };
+    let h = if labels.is_empty() {
+        0.0
+    } else {
+        cy - y + 24.0
+    };
     (rects, h)
 }
 
@@ -163,11 +198,30 @@ pub fn card(p: &mut Painter, c: &Colors, r: Rect) {
 }
 
 pub fn label(p: &mut Painter, c: &Colors, x: f32, y: f32, text: &str) {
-    p.text(Face::Semibold, 12.0, x, y + 8.0, text, c.pal.muted, f32::INFINITY);
+    p.text(
+        Face::Semibold,
+        12.0,
+        x,
+        y + 8.0,
+        text,
+        c.pal.muted,
+        f32::INFINITY,
+    );
 }
 
 /// An InfoBar: tinted card, glyph, wrapped text. Returns the height.
-pub fn infobar(p: &mut Painter, c: &Colors, x: f32, y: f32, w: f32, glyph: &str, ink: Rgb, bg: Rgb, line: Rgb, text: &str) -> f32 {
+pub fn infobar(
+    p: &mut Painter,
+    c: &Colors,
+    x: f32,
+    y: f32,
+    w: f32,
+    glyph: &str,
+    ink: Rgb,
+    bg: Rgb,
+    line: Rgb,
+    text: &str,
+) -> f32 {
     let tw = w - 46.0;
     let th = p.paragraph_height(Face::Ui, 12.5, tw, text);
     let h = th.max(18.0) + 18.0;
@@ -220,7 +274,11 @@ pub fn segmented_text(
             p.rbox_a(s.inset(1.0), RADIUS, c.pal.hover, h * 0.7);
         }
         let near = 1.0 - ((thumb.cx() - s.cx()).abs() / seg_w).min(1.0);
-        let face = if i == chosen { Face::Semibold } else { Face::Ui };
+        let face = if i == chosen {
+            Face::Semibold
+        } else {
+            Face::Ui
+        };
         p.text_center(face, 12.5, *s, l, mix(c.pal.muted, c.pal.text, near));
     }
     segs

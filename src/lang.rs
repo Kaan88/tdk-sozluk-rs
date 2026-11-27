@@ -61,8 +61,14 @@ macro_rules! tf {
 
 /// The question particle after `w`, by its last vowel: hala mı, hâlâ mı, bekâr mı, gün mü.
 pub fn mi(w: &str) -> &'static str {
-    let last = w.chars().rev().find(|c| "aâıeiîoöuüûAÂIİEOÖUÜ".contains(*c));
-    match last.map(|c| crate::turkish::lower(&c.to_string())).as_deref() {
+    let last = w
+        .chars()
+        .rev()
+        .find(|c| "aâıeiîoöuüûAÂIİEOÖUÜ".contains(*c));
+    match last
+        .map(|c| crate::turkish::lower(&c.to_string()))
+        .as_deref()
+    {
         Some("e" | "i" | "î") => "mi",
         Some("o" | "u" | "û") => "mu",
         Some("ö" | "ü") => "mü",

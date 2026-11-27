@@ -19,7 +19,12 @@ use mdshared_ui::host::{self, Config};
 /// `--check TEXT`, `--theme system|light|dark`, `--full`, `--compact`.
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let arg = |k: &str| args.iter().position(|a| a == k).and_then(|i| args.get(i + 1)).cloned();
+    let arg = |k: &str| {
+        args.iter()
+            .position(|a| a == k)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
     if args.iter().any(|a| a == "--demo") {
         prefs::DEMO.store(true, std::sync::atomic::Ordering::Relaxed);
     }

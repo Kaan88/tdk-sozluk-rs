@@ -22,8 +22,8 @@ const JOINED: &[(&str, &str)] = &[
 /// Both spellings are TDK headwords, and the plain one is often typed for the other. Only these
 /// are flagged: the generic rule would flag `ama` (âmâ), `dahi`, `tabii`, `metin` on every line.
 const MEANING_PAIRS: &[&str] = &[
-    "hala", "kar", "karlı", "hal", "alem", "adet", "aşık", "dahil", "hakim", "bekar", "yar", "fani",
-    "varis", "milli",
+    "hala", "kar", "karlı", "hal", "alem", "adet", "aşık", "dahil", "hakim", "bekar", "yar",
+    "fani", "varis", "milli",
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -51,7 +51,11 @@ pub struct Token {
 
 /// Matches the case of `like` (a capital first letter) on `w`.
 fn cased(w: &str, like: &str) -> String {
-    if is_capitalized(like) { capitalize(w) } else { w.to_string() }
+    if is_capitalized(like) {
+        capitalize(w)
+    } else {
+        w.to_string()
+    }
 }
 
 fn pick_variant<'a>(vs: &[&'a str], typed_has_space: bool) -> Option<&'a str> {
@@ -74,24 +78,34 @@ pub fn classify(ix: &Index, word: &str, ignore: &[String]) -> Kind {
     }
     for (bad, good) in JOINED {
         if let Some(rest) = l.strip_prefix(bad) {
-            return Kind::Spelling { fix: cased(&format!("{good}{rest}"), word), why: "written apart" };
+            return Kind::Spelling {
+                fix: cased(&format!("{good}{rest}"), word),
+                why: "written apart",
+            };
         }
     }
     if ix.contains(&l) {
         if MEANING_PAIRS.contains(&l.as_str())
             && let Some(o) = ix.variants(&l).first()
         {
-            return Kind::Pair { other: o.to_string() };
+            return Kind::Pair {
+                other: o.to_string(),
+            };
         }
         // Joined and apart both exist (yeraltı / yer altı).
         if let Some(o) = ix.variants(&l).into_iter().find(|v| v.contains(' ')) {
-            return Kind::Pair { other: o.to_string() };
+            return Kind::Pair {
+                other: o.to_string(),
+            };
         }
         return Kind::Ok(None);
     }
     let vs = ix.variants(&l);
     if let Some(v) = pick_variant(&vs, false) {
-        return Kind::Spelling { fix: cased(v, word), why: "TDK spelling" };
+        return Kind::Spelling {
+            fix: cased(v, word),
+            why: "TDK spelling",
+        };
     }
     // The longest stem that is a headword, a verb stem, or a misspelt headword.
     let chars: Vec<(usize, char)> = l.char_indices().collect();
@@ -111,21 +125,32 @@ pub fn classify(ix: &Index, word: &str, ignore: &[String]) -> Kind {
             if MEANING_PAIRS.contains(&found.as_str())
                 && let Some(o) = ix.variants(&found).first()
             {
-                return Kind::Pair { other: cased(&format!("{}{}", soften_like(o, stem, &found), rest), word) };
+                return Kind::Pair {
+                    other: cased(&format!("{}{}", soften_like(o, stem, &found), rest), word),
+                };
             }
             if let Some(o) = ix.variants(&found).into_iter().find(|v| v.contains(' ')) {
-                return Kind::Pair { other: cased(&format!("{}{}", soften_like(o, stem, &found), rest), word) };
+                return Kind::Pair {
+                    other: cased(&format!("{}{}", soften_like(o, stem, &found), rest), word),
+                };
             }
             return Kind::Ok(Some(found));
         }
         if n >= 4 {
             let vs = ix.variants(stem);
             if let Some(v) = pick_variant(&vs, false).filter(|v| !v.contains(' ')) {
-                return Kind::Spelling { fix: cased(&format!("{v}{rest}"), word), why: "TDK spelling of the stem" };
+                return Kind::Spelling {
+                    fix: cased(&format!("{v}{rest}"), word),
+                    why: "TDK spelling of the stem",
+                };
             }
         }
     }
-    if is_capitalized(word) { Kind::Name } else { Kind::Unknown }
+    if is_capitalized(word) {
+        Kind::Name
+    } else {
+        Kind::Unknown
+    }
 }
 
 fn is_question_particle(l: &str) -> bool {
@@ -139,10 +164,11 @@ fn is_question_particle(l: &str) -> bool {
     }
     let rest: String = cs.collect();
     const ENDS: &[&str] = &[
-        "", "yım", "yim", "yum", "yüm", "sın", "sin", "sun", "sün", "yız", "yiz", "yuz", "yüz", "sınız", "siniz",
-        "sunuz", "sünüz", "ydı", "ydi", "ydu", "ydü", "ymış", "ymiş", "ymuş", "ymüş", "dır", "dir", "dur", "dür",
-        "ydım", "ydim", "ydum", "ydüm", "ydın", "ydin", "ydun", "ydün", "ydık", "ydik", "yduk", "ydük", "ydınız",
-        "ydiniz", "ydunuz", "ydünüz", "ydılar", "ydiler", "ydular", "ydüler",
+        "", "yım", "yim", "yum", "yüm", "sın", "sin", "sun", "sün", "yız", "yiz", "yuz", "yüz",
+        "sınız", "siniz", "sunuz", "sünüz", "ydı", "ydi", "ydu", "ydü", "ymış", "ymiş", "ymuş",
+        "ymüş", "dır", "dir", "dur", "dür", "ydım", "ydim", "ydum", "ydüm", "ydın", "ydin", "ydun",
+        "ydün", "ydık", "ydik", "yduk", "ydük", "ydınız", "ydiniz", "ydunuz", "ydünüz", "ydılar",
+        "ydiler", "ydular", "ydüler",
     ];
     ENDS.contains(&rest.as_str())
 }
@@ -209,12 +235,21 @@ pub fn check(ix: &Index, text: &str, ignore: &[String]) -> Vec<Token> {
         }
         let word = &text[i..end];
         let kind = classify(ix, word, ignore);
-        out.push(Token { start: i, end, word: word.to_string(), kind });
+        out.push(Token {
+            start: i,
+            end,
+            word: word.to_string(),
+            kind,
+        });
         // Skip a suffix after an apostrophe.
         if let Some(&(_, '\'' | '’')) = it.peek() {
             it.next();
             while let Some(&(_, d)) = it.peek() {
-                if is_word_char(d) { it.next(); } else { break; }
+                if is_word_char(d) {
+                    it.next();
+                } else {
+                    break;
+                }
             }
         }
     }
@@ -247,7 +282,10 @@ mod tests {
 
     fn kinds(text: &str) -> Vec<(String, Kind)> {
         let ix = Index::load();
-        check(&ix, text, &[]).into_iter().map(|t| (t.word, t.kind)).collect()
+        check(&ix, text, &[])
+            .into_iter()
+            .map(|t| (t.word, t.kind))
+            .collect()
     }
 
     #[test]
@@ -256,17 +294,50 @@ mod tests {
         let text = "Herşey kağıt üzerinde rengarenk görünüyordu, ama Brennan hala yeraltında. Bekarlar mı?";
         let toks = check(&ix, text, &[]);
         let k = |w: &str| toks.iter().find(|t| t.word == w).unwrap().kind.clone();
-        assert_eq!(k("Herşey"), Kind::Spelling { fix: "Her şey".into(), why: "written apart" });
-        assert_eq!(k("kağıt"), Kind::Spelling { fix: "kâğıt".into(), why: "TDK spelling" });
-        assert_eq!(k("rengarenk"), Kind::Spelling { fix: "rengârenk".into(), why: "TDK spelling" });
+        assert_eq!(
+            k("Herşey"),
+            Kind::Spelling {
+                fix: "Her şey".into(),
+                why: "written apart"
+            }
+        );
+        assert_eq!(
+            k("kağıt"),
+            Kind::Spelling {
+                fix: "kâğıt".into(),
+                why: "TDK spelling"
+            }
+        );
+        assert_eq!(
+            k("rengarenk"),
+            Kind::Spelling {
+                fix: "rengârenk".into(),
+                why: "TDK spelling"
+            }
+        );
         assert!(matches!(k("görünüyordu"), Kind::Ok(Some(_))));
         assert_eq!(k("ama"), Kind::Ok(None));
         assert_eq!(k("Brennan"), Kind::Name);
         assert_eq!(k("mı"), Kind::Ok(None));
         assert_eq!(classify(&ix, "misiniz", &[]), Kind::Ok(None));
-        assert_eq!(k("hala"), Kind::Pair { other: "hâlâ".into() });
-        assert_eq!(k("yeraltında"), Kind::Pair { other: "yer altında".into() });
-        assert_eq!(k("Bekarlar"), Kind::Pair { other: "Bekârlar".into() });
+        assert_eq!(
+            k("hala"),
+            Kind::Pair {
+                other: "hâlâ".into()
+            }
+        );
+        assert_eq!(
+            k("yeraltında"),
+            Kind::Pair {
+                other: "yer altında".into()
+            }
+        );
+        assert_eq!(
+            k("Bekarlar"),
+            Kind::Pair {
+                other: "Bekârlar".into()
+            }
+        );
         assert_eq!(
             fixed(text, &toks),
             "Her şey kâğıt üzerinde rengârenk görünüyordu, ama Brennan hala yeraltında. Bekarlar mı?"

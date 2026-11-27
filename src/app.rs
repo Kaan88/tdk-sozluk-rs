@@ -227,7 +227,11 @@ impl Sozluk {
 
     pub fn set_tab(&mut self, t: Tab) {
         if t != self.tab {
-            self.page_dir = if t.index() > self.tab.index() { 1.0 } else { -1.0 };
+            self.page_dir = if t.index() > self.tab.index() {
+                1.0
+            } else {
+                -1.0
+            };
             self.tab = t;
             self.page_epoch += 1;
             if t == Tab::Database {
@@ -265,7 +269,9 @@ impl Sozluk {
     }
 
     pub fn ask_live_if_missing(&mut self) {
-        let Some(w) = self.current.clone() else { return };
+        let Some(w) = self.current.clone() else {
+            return;
+        };
         if !matches!(self.lookup, Lookup::Missing) || !self.prefs.live {
             return;
         }
@@ -300,7 +306,12 @@ impl Sozluk {
 
     pub fn update_results(&mut self) {
         let q = self.search.text().to_string();
-        self.results = self.ix.search(&q, 60).into_iter().map(str::to_string).collect();
+        self.results = self
+            .ix
+            .search(&q, 60)
+            .into_iter()
+            .map(str::to_string)
+            .collect();
         self.sel = 0;
         self.results_for = String::new();
         if self.tab != Tab::Lookup {
@@ -315,13 +326,19 @@ impl Sozluk {
 
     pub fn toast(&mut self, cx: &mut Cx<'_, Msg>, text: &str) {
         let until = cx.now() + Duration::from_millis(1600);
-        self.toast = Some(Toast { text: text.to_string(), until });
+        self.toast = Some(Toast {
+            text: text.to_string(),
+            until,
+        });
         cx.wake_at(until);
     }
 
     pub fn copy(&mut self, cx: &mut Cx<'_, Msg>, text: &str) {
         if platform::set_clipboard_text(text) {
-            let t = tf!("Kopyalandı: \u{201c}{text}\u{201d}", "Copied \u{201c}{text}\u{201d}");
+            let t = tf!(
+                "Kopyalandı: \u{201c}{text}\u{201d}",
+                "Copied \u{201c}{text}\u{201d}"
+            );
             self.toast(cx, &t);
         }
     }
@@ -372,7 +389,9 @@ impl Sozluk {
 
     pub fn apply_size(&self, cx: &mut Cx<'_, Msg>) {
         let (w, h) = self.prefs.window_size();
-        let _ = cx.window().request_inner_size(LogicalSize::new(w as f64, h as f64));
+        let _ = cx
+            .window()
+            .request_inner_size(LogicalSize::new(w as f64, h as f64));
     }
 
     /// Puts the window back where it was, while it is still hidden, if that place is still on a
@@ -392,7 +411,11 @@ impl Sozluk {
     }
 
     pub fn apply_on_top(&self, cx: &mut Cx<'_, Msg>) {
-        cx.window().set_window_level(if self.prefs.on_top { WindowLevel::AlwaysOnTop } else { WindowLevel::Normal });
+        cx.window().set_window_level(if self.prefs.on_top {
+            WindowLevel::AlwaysOnTop
+        } else {
+            WindowLevel::Normal
+        });
     }
 
     fn set_mode(&mut self, cx: &mut Cx<'_, Msg>, m: Mode) {
@@ -412,12 +435,22 @@ impl Sozluk {
         };
         self.toast(cx, label);
         if b != Backdrop::Off && !platform::backdrop_available() {
-            self.toast(cx, tl("Bu Windows'ta Mica ve Akrilik yok", "This Windows has no Mica or Acrylic"));
+            self.toast(
+                cx,
+                tl(
+                    "Bu Windows'ta Mica ve Akrilik yok",
+                    "This Windows has no Mica or Acrylic",
+                ),
+            );
         }
     }
 
     fn hit_at(&self, x: f32, y: f32) -> Option<Hit> {
-        self.hits.iter().rev().find(|(r, _)| r.contains(x, y)).map(|(_, h)| h.clone())
+        self.hits
+            .iter()
+            .rev()
+            .find(|(r, _)| r.contains(x, y))
+            .map(|(_, h)| h.clone())
     }
 
     fn focus_search(&mut self) {
@@ -456,7 +489,11 @@ impl Sozluk {
                 self.prefs.on_top = !self.prefs.on_top;
                 self.apply_on_top(cx);
                 self.prefs.save();
-                let t = if self.prefs.on_top { tl("Hep üstte", "Stays on top") } else { tl("Artık üstte değil", "No longer on top") };
+                let t = if self.prefs.on_top {
+                    tl("Hep üstte", "Stays on top")
+                } else {
+                    tl("Artık üstte değil", "No longer on top")
+                };
                 self.toast(cx, t);
             }
             Hit::Back => self.go_back(),
@@ -485,7 +522,14 @@ impl Sozluk {
                 if let Some(w) = self.current.clone() {
                     let on = self.prefs.toggle_pin(&w);
                     self.prefs.save();
-                    self.toast(cx, if on { tl("Sabitlendi", "Pinned") } else { tl("Sabitleme kaldırıldı", "Unpinned") });
+                    self.toast(
+                        cx,
+                        if on {
+                            tl("Sabitlendi", "Pinned")
+                        } else {
+                            tl("Sabitleme kaldırıldı", "Unpinned")
+                        },
+                    );
                 }
             }
             Hit::Unpin(w) => {
@@ -515,7 +559,8 @@ impl Sozluk {
             Hit::CheckFixAll => {
                 let fixed = check::fixed(&self.check_text, &self.check_tokens);
                 self.set_check_text(&fixed);
-                self.check_field.set_text(fixed.lines().next().unwrap_or(""));
+                self.check_field
+                    .set_text(fixed.lines().next().unwrap_or(""));
                 if platform::set_clipboard_text(&fixed) {
                     self.last_clip = Some(fixed);
                     self.toast(cx, tl("Düzeltilmiş metin kopyalandı", "Fixed text copied"));
@@ -538,7 +583,11 @@ impl Sozluk {
                 self.prefs.save();
             }
             Hit::DbFolder => {
-                let target = self.store.crawl_path.clone().or_else(|| self.store.cache_path.clone());
+                let target = self
+                    .store
+                    .crawl_path
+                    .clone()
+                    .or_else(|| self.store.cache_path.clone());
                 if let Some(p) = target {
                     platform::reveal_in_file_manager(&p);
                 }
@@ -573,7 +622,8 @@ impl Sozluk {
         let m = k.mods;
         // Shortcuts first.
         match (&name, m.ctrl, m.shift, m.alt) {
-            (KeyName::Char('k' | 'l'), true, false, false) | (KeyName::F(3), false, false, false) => {
+            (KeyName::Char('k' | 'l'), true, false, false)
+            | (KeyName::F(3), false, false, false) => {
                 self.set_tab(Tab::Lookup);
                 self.focus_search();
                 return;
@@ -670,7 +720,10 @@ impl Sozluk {
             return;
         }
         if self.check_focus {
-            if let Some(changed) = self.check_field.handle_key(&name, m, k.text.as_deref(), true) {
+            if let Some(changed) = self
+                .check_field
+                .handle_key(&name, m, k.text.as_deref(), true)
+            {
                 if changed {
                     let t = self.check_field.text().to_string();
                     self.set_check_text(&t);
@@ -683,13 +736,24 @@ impl Sozluk {
             return;
         }
         match name {
-            KeyName::PageDown | KeyName::Down => self.scroll_by(if name == KeyName::Down { 60.0 } else { self.view_h * 0.85 }),
-            KeyName::PageUp | KeyName::Up => self.scroll_by(if name == KeyName::Up { -60.0 } else { -self.view_h * 0.85 }),
+            KeyName::PageDown | KeyName::Down => self.scroll_by(if name == KeyName::Down {
+                60.0
+            } else {
+                self.view_h * 0.85
+            }),
+            KeyName::PageUp | KeyName::Up => self.scroll_by(if name == KeyName::Up {
+                -60.0
+            } else {
+                -self.view_h * 0.85
+            }),
             KeyName::Home => self.scroll[self.tab.index()] = 0.0,
             KeyName::Backspace if self.tab == Tab::Lookup => self.go_back(),
             _ => {
                 // Type to search: a letter typed with nothing focused starts a search.
-                if let Some(t) = k.text.as_deref().filter(|t| t.chars().all(char::is_alphabetic) && !t.is_empty())
+                if let Some(t) = k
+                    .text
+                    .as_deref()
+                    .filter(|t| t.chars().all(char::is_alphabetic) && !t.is_empty())
                     && !m.ctrl
                     && !m.alt
                 {
@@ -822,7 +886,12 @@ impl App for Sozluk {
                 self.hover = None;
                 cx.request_redraw_all();
             }
-            Event::Press { x, y, button: Button::Left, clicks } => {
+            Event::Press {
+                x,
+                y,
+                button: Button::Left,
+                clicks,
+            } => {
                 let h = self.hit_at(x, y);
                 match h {
                     Some(Hit::Title) => {
@@ -839,14 +908,16 @@ impl App for Sozluk {
                         if clicks >= 2 {
                             self.search.select_all();
                         } else {
-                            self.search.press(x - fx, &self.search_stops, cx.mods().shift);
+                            self.search
+                                .press(x - fx, &self.search_stops, cx.mods().shift);
                         }
                     }
                     Some(Hit::CheckField) => {
                         self.check_focus = true;
                         self.search_focus = false;
                         let fx = self.check_x;
-                        self.check_field.press(x - fx, &self.check_stops, cx.mods().shift);
+                        self.check_field
+                            .press(x - fx, &self.check_stops, cx.mods().shift);
                     }
                     Some(h) => {
                         if !matches!(h, Hit::Content) {
@@ -860,15 +931,25 @@ impl App for Sozluk {
                 }
                 cx.request_redraw_all();
             }
-            Event::Press { button: Button::Back, .. } => {
+            Event::Press {
+                button: Button::Back,
+                ..
+            } => {
                 self.go_back();
                 cx.request_redraw_all();
             }
-            Event::Press { button: Button::Forward, .. } => {
+            Event::Press {
+                button: Button::Forward,
+                ..
+            } => {
                 self.go_forward();
                 cx.request_redraw_all();
             }
-            Event::Release { x, y, button: Button::Left } => {
+            Event::Release {
+                x,
+                y,
+                button: Button::Left,
+            } => {
                 if let Some(p) = self.pressed.take() {
                     if self.hit_at(x, y).as_ref() == Some(&p) {
                         self.activate(cx, p);
@@ -936,7 +1017,10 @@ impl App for Sozluk {
             self.set_tab(Tab::Check);
             self.check_field.set_text(text.lines().next().unwrap_or(""));
             self.set_check_text(&text);
-            let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
             self.toast(cx, &tf!("Denetleniyor: {name}", "Checking {name}"));
             cx.request_redraw_all();
         }

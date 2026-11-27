@@ -60,9 +60,10 @@ sienna `#a0522d` for word types; in the dark, navy `#1a1a2e`, cards `#24243e` an
 ## Data
 
 - Headwords: `data/gts-headwords.txt` (sozluk.gov.tr/data/autocomplete.json, 2026-11-27).
-- Full entries: the crawl's `gts.sqlite` (from the subtitle skill's `scripts/tdk-crawl.py`),
-  opened read-only, so it can be read while the crawl still writes. Found at `$SOZLUK_DB`, next to
-  `sozluk.exe`, in `%LOCALAPPDATA%\sozluk`, or in the skill's `assets/tdk`.
+- Full entries: the `gts.sqlite` of the crawl in `tools/tdk-crawl.py` (by default
+  `data/gts.sqlite`, not committed), opened read-only, so it can be read while the crawl still
+  writes. Found at `$SOZLUK_DB`, next to `sozluk.exe`, or in `%LOCALAPPDATA%\sozluk`. The crawl
+  can be split across machines (`--shard i/n`) and the parts joined with `--merge`.
 - Missing entries are asked from sozluk.gov.tr, one at a time, and kept in
   `%LOCALAPPDATA%\sozluk\live-cache.sqlite`. Off with one switch on the Settings tab. A 429
   (rate limit) pauses live lookups for 90 s.

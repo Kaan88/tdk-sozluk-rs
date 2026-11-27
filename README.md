@@ -63,10 +63,10 @@ iki ton kendi ailesi içinde kaydırıldı (bkz. `src/theme.rs`).
 ## Veri
 
 - Madde listesi: `data/gts-headwords.txt` (sozluk.gov.tr/data/autocomplete.json, 2026-11-27).
-- Tam maddeler: taramanın `gts.sqlite` dosyası (altyazı becerisinin `scripts/tdk-crawl.py`
-  betiğinden). Salt okunur açılır, bu yüzden tarama sürerken de okunabilir. `$SOZLUK_DB`'de,
-  `sozluk.exe`'nin yanında, `%LOCALAPPDATA%\sozluk` içinde ya da becerinin `assets/tdk`
-  klasöründe aranır.
+- Tam maddeler: `tools/tdk-crawl.py` taramasının `gts.sqlite` dosyası (öntanımlı olarak
+  `data/gts.sqlite`; depoya konmaz). Salt okunur açılır, bu yüzden tarama sürerken de
+  okunabilir. `$SOZLUK_DB`'de, `sozluk.exe`'nin yanında ya da `%LOCALAPPDATA%\sozluk` içinde
+  aranır. Tarama birkaç makineye bölünebilir (`--shard i/n`); parçalar `--merge` ile birleşir.
 - Eksik maddeler sozluk.gov.tr'ye teker teker sorulur ve
   `%LOCALAPPDATA%\sozluk\live-cache.sqlite` içinde saklanır. Ayarlar sekmesindeki tek
   düğmeyle kapatılır. 429 (hız sınırı) yanıtı canlı aramaları 90 sn durdurur.

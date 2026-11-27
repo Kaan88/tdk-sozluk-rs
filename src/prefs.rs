@@ -61,7 +61,11 @@ impl Default for Prefs {
 const SEP: char = '\u{1f}';
 
 fn list(v: &str) -> Vec<String> {
-    unescape(v).split(SEP).filter(|s| !s.is_empty()).map(str::to_string).collect()
+    unescape(v)
+        .split(SEP)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 fn join(v: &[String]) -> String {

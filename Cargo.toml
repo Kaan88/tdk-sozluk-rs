@@ -1,0 +1,31 @@
+[package]
+name = "sozluk"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Offline TDK Güncel Türkçe Sözlük: look up, line check, compact and full windows"
+license = "MIT"
+
+[[bin]]
+name = "sozluk"
+path = "src/main.rs"
+
+[dependencies]
+# The toolkit, pinned like the Markdown apps pin it.
+mdshared-ui = { git = "https://github.com/Kaan88/markdown-shared-rs", rev = "ffffe3e77860fc393b81c52e9a170b3a6e827013", features = ["host"] }
+mdshared-app = { git = "https://github.com/Kaan88/markdown-shared-rs", rev = "ffffe3e77860fc393b81c52e9a170b3a6e827013" }
+# The toolkit's own winit, for the window level and the window size.
+winit = { version = "=0.30.13", default-features = false, features = ["rwh_06"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde_json = "1"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+ureq = { version = "2", default-features = false, features = ["tls"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

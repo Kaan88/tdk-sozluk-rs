@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 512" role="img" aria-label="Sözlük">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d8443a"/>
+      <stop offset="1" stop-color="#a02a20"/>
+    </linearGradient>
+  </defs>
+  <g transform="scale(0.5)">
+    <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#g)"/>
+    <path d="M500 470Q380 400 236 430V760Q380 730 500 790Z" fill="#fff"/>
+    <path d="M524 470Q644 400 788 430V760Q644 730 524 790Z" fill="#fff"/>
+    <g fill="#f2b8b2">
+      <rect x="302" y="518" width="150" height="22" rx="11"/><rect x="572" y="518" width="150" height="22" rx="11"/>
+      <rect x="302" y="583" width="150" height="22" rx="11"/><rect x="572" y="583" width="150" height="22" rx="11"/>
+      <rect x="342" y="648" width="110" height="22" rx="11"/><rect x="572" y="648" width="110" height="22" rx="11"/>
+    </g>
+    <path d="M418 236Q512 410 606 236" fill="none" stroke="#fff" stroke-width="68" stroke-linecap="round"/>
+  </g>
+  <text x="560" y="318" font-family="'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif" font-size="236" font-weight="600" fill="#2c3e50" letter-spacing="-4">Sözlük</text>
+  <text x="566" y="402" font-family="'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif" font-size="58" fill="#546e7a">Güncel Türkçe Sözlük, offline</text>
+</svg>

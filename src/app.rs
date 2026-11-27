@@ -292,6 +292,7 @@ impl Sozluk {
     pub fn open_word(&mut self, w: &str, push: bool) {
         if self.current.as_deref() == Some(w) {
             self.results_for = self.search.text().to_string();
+            self.search.select_all();
             return;
         }
         if push && let Some(c) = self.current.take() {
@@ -303,6 +304,8 @@ impl Sozluk {
         self.live_error = None;
         self.prefs.visited(w);
         self.search.set_text(w);
+        // Selected, so the next word typed replaces it; End or an arrow edits it instead.
+        self.search.select_all();
         self.results_for = w.to_string();
         self.scroll[0] = 0.0;
         self.page_dir = 0.0;
@@ -1260,9 +1263,13 @@ impl App for Sozluk {
                 cx.set_dark(self.dark());
                 cx.request_redraw_all();
             }
-            Event::Focus(_) => {
+            Event::Focus(on) => {
                 self.cancel_pointers(cx);
                 self.popup = None;
+                // Back from another window with the open word in the box: typing replaces it.
+                if on && self.search_focus && !self.showing_results() {
+                    self.search.select_all();
+                }
                 cx.request_redraw_all();
             }
             Event::Scale(scale) => {

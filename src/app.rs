@@ -7,10 +7,13 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Sender, channel};
 use std::time::{Duration, Instant};
 
+use mdshared_ui::gfx::{Face, Gfx};
 use mdshared_ui::host::{App, Button, Cx, Event, KeyPress};
 use mdshared_ui::keys::KeyName;
+use mdshared_ui::menu::Item;
 use mdshared_ui::platform;
-use mdshared_ui::textfield::TextField;
+use mdshared_ui::submenu::{Cascade, Outcome};
+use mdshared_ui::textfield::{ContextAction, FieldHit, Pointer, TextField};
 use winit::dpi::LogicalSize;
 use winit::window::WindowLevel;
 
@@ -146,6 +149,16 @@ pub struct Sozluk {
     /// Where the fields' text starts, from the last frame.
     pub search_x: f32,
     pub check_x: f32,
+    /// The fields' text rectangles in window coordinates, from the last frame.
+    pub search_area: Rect,
+    pub check_area: Rect,
+    /// Mouse selection (drag, double and triple click, edge scroll) for each field.
+    pub search_ptr: Pointer,
+    pub check_ptr: Pointer,
+    /// Measures text for the pointers.
+    pub gfx: Gfx,
+    /// A field's right-click menu, and which field it is for.
+    pub popup: Option<(Cascade<ContextAction>, Field)>,
     /// Findings the user chose to keep as they are, this session.
     pub kept: HashSet<String>,
     /// `--demo-switch`: flip the theme once, 1.5 s after start (to watch the transition).
@@ -156,6 +169,29 @@ pub struct Sozluk {
 }
 
 pub use mdshared_ui::gfx::Rect;
+
+/// The two text fields.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Field {
+    Search,
+    Check,
+}
+
+const FIELD_SCROLL: &str = "field-scroll";
+
+/// A press in a field's box but outside its text (the magnifier, the padding) moved to the
+/// nearest end of the text, so it still places the caret there.
+fn nearest_in(text: Rect, (x, y): (f32, f32)) -> (f32, f32) {
+    let ok = [text.x, text.y, text.w, text.h]
+        .iter()
+        .all(|v| v.is_finite())
+        && text.w > 0.0;
+    if !ok || text.contains(x, y) {
+        return (x, y);
+    }
+    let right = (text.right() - 0.5).max(text.x);
+    (x.clamp(text.x, right), text.cy())
+}
 
 impl Sozluk {
     pub fn new() -> Sozluk {
@@ -203,6 +239,12 @@ impl Sozluk {
             toast: None,
             search_x: 0.0,
             check_x: 0.0,
+            search_area: Rect::new(0.0, 0.0, 0.0, 0.0),
+            check_area: Rect::new(0.0, 0.0, 0.0, 0.0),
+            search_ptr: Pointer::system(1.0),
+            check_ptr: Pointer::system(1.0),
+            gfx: Gfx::new(),
+            popup: None,
             kept: HashSet::new(),
             demo_switch: false,
             blink: None,
@@ -451,6 +493,90 @@ impl Sozluk {
             .rev()
             .find(|(r, _)| r.contains(x, y))
             .map(|(_, h)| h.clone())
+    }
+
+    fn field_hit(&self, f: Field, scale: f32) -> FieldHit {
+        FieldHit {
+            area: match f {
+                Field::Search => self.search_area,
+                Field::Check => self.check_area,
+            },
+            face: Face::Ui,
+            size: 14.0,
+            scale,
+        }
+    }
+
+    /// Keeps the drag's edge scroll going while the pointer rests past a field's end.
+    fn arm_field_scroll(&self, cx: &mut Cx<'_, Msg>) {
+        match self.search_ptr.deadline().or(self.check_ptr.deadline()) {
+            Some(at) => cx.timer_at(FIELD_SCROLL, at),
+            None => {
+                cx.cancel_timer(FIELD_SCROLL);
+            }
+        }
+    }
+
+    fn cancel_pointers(&mut self, cx: &mut Cx<'_, Msg>) {
+        self.search_ptr.cancel();
+        self.check_ptr.cancel();
+        self.arm_field_scroll(cx);
+    }
+
+    /// The field's text changed: search, or check the line again.
+    fn field_changed(&mut self, f: Field) {
+        match f {
+            Field::Search => self.update_results(),
+            Field::Check => {
+                let t = self.check_field.text().to_string();
+                self.set_check_text(&t);
+            }
+        }
+    }
+
+    fn open_field_menu(&mut self, f: Field, x: f32, y: f32) {
+        let field = match f {
+            Field::Search => &self.search,
+            Field::Check => &self.check_field,
+        };
+        let nodes = field
+            .context_menu()
+            .into_iter()
+            .map(|mut it: Item<ContextAction>| {
+                it.label = match it.id {
+                    ContextAction::Cut => tl("Kes", "Cut"),
+                    ContextAction::Copy => tl("Kopyala", "Copy"),
+                    ContextAction::Paste => tl("Yapıştır", "Paste"),
+                    ContextAction::SelectAll => tl("Tümünü seç", "Select all"),
+                }
+                .to_string();
+                it.into()
+            })
+            .collect();
+        self.popup = Some((Cascade::at(nodes, x, y), f));
+    }
+
+    fn popup_result(&mut self, outcome: Outcome<ContextAction>) {
+        match outcome {
+            Outcome::Chosen(action) => {
+                if let Some((_, f)) = self.popup.take() {
+                    let before = match f {
+                        Field::Search => self.search.text().to_string(),
+                        Field::Check => self.check_field.text().to_string(),
+                    };
+                    let field = match f {
+                        Field::Search => &mut self.search,
+                        Field::Check => &mut self.check_field,
+                    };
+                    field.apply_context_action(action);
+                    if field.text() != before {
+                        self.field_changed(f);
+                    }
+                }
+            }
+            Outcome::Close | Outcome::Outside => self.popup = None,
+            _ => {}
+        }
     }
 
     fn focus_search(&mut self) {
@@ -814,6 +940,9 @@ impl App for Sozluk {
     fn start(&mut self, cx: &mut Cx<'_, Msg>) {
         self.live_tx = Some(spawn_live(cx.proxy()));
         self.blink = platform::caret_blink_time();
+        // The double-click distance is in device px: made for the window's real scale.
+        self.search_ptr = Pointer::system(cx.scale());
+        self.check_ptr = Pointer::system(cx.scale());
         cx.set_dark(self.dark());
         cx.set_backdrop(self.prefs.backdrop, &Colors::of(self.dark()).pal);
         set_icons(cx);
@@ -831,6 +960,23 @@ impl App for Sozluk {
     }
 
     fn timer_fired(&mut self, cx: &mut Cx<'_, Msg>, name: &str) {
+        if name == FIELD_SCROLL {
+            let (now, scale) = (cx.now(), cx.scale());
+            let (sh, ch) = (
+                self.field_hit(Field::Search, scale),
+                self.field_hit(Field::Check, scale),
+            );
+            if self
+                .search_ptr
+                .tick(&mut self.search, &mut self.gfx, sh, now)
+                | self
+                    .check_ptr
+                    .tick(&mut self.check_field, &mut self.gfx, ch, now)
+            {
+                cx.request_redraw_all();
+            }
+            self.arm_field_scroll(cx);
+        }
         if name == "clipboard" {
             self.poll_clipboard(cx);
         }
@@ -868,6 +1014,33 @@ impl App for Sozluk {
         match event {
             Event::PointerMove { x, y } => {
                 self.pointer = (x, y);
+                if let Some((menu, _)) = &mut self.popup {
+                    if menu.pointer(x, y, cx.now()) {
+                        cx.request_redraw_all();
+                    }
+                    cx.set_cursor(mdshared_ui::cursor::Cursor::Default);
+                    return;
+                }
+                // A held drag extends the selection, inside the field or past its ends.
+                let (now, scale) = (cx.now(), cx.scale());
+                let (sh, ch) = (
+                    self.field_hit(Field::Search, scale),
+                    self.field_hit(Field::Check, scale),
+                );
+                let moved =
+                    self.search_ptr
+                        .pointer_move(&mut self.search, &mut self.gfx, sh, (x, y), now)
+                        | self.check_ptr.pointer_move(
+                            &mut self.check_field,
+                            &mut self.gfx,
+                            ch,
+                            (x, y),
+                            now,
+                        );
+                if moved {
+                    cx.request_redraw_all();
+                }
+                self.arm_field_scroll(cx);
                 let h = self.hit_at(x, y);
                 if h != self.hover {
                     self.hover = h;
@@ -890,9 +1063,70 @@ impl App for Sozluk {
                 x,
                 y,
                 button: Button::Left,
+                ..
+            } if self.popup.is_some() => {
+                if let Some((menu, _)) = &mut self.popup {
+                    let outcome = menu.click(x, y);
+                    self.popup_result(outcome);
+                }
+                cx.request_redraw_all();
+            }
+            Event::Press {
+                x,
+                y,
+                button: Button::Right,
+                ..
+            } => {
+                self.popup = None;
+                self.cancel_pointers(cx);
+                let field = match self.hit_at(x, y) {
+                    Some(Hit::Search) => {
+                        self.search_focus = true;
+                        self.check_focus = false;
+                        Some(Field::Search)
+                    }
+                    Some(Hit::CheckField) => {
+                        self.check_focus = true;
+                        self.search_focus = false;
+                        Some(Field::Check)
+                    }
+                    _ => None,
+                };
+                if let Some(f) = field {
+                    let hit = self.field_hit(f, cx.scale());
+                    let now = cx.now();
+                    let (text, ptr) = match f {
+                        Field::Search => (&mut self.search, &mut self.search_ptr),
+                        Field::Check => (&mut self.check_field, &mut self.check_ptr),
+                    };
+                    if !text.has_selection() {
+                        let at = nearest_in(hit.area, (x, y));
+                        ptr.press(text, &mut self.gfx, hit, at, Default::default(), now);
+                        ptr.cancel();
+                    }
+                    self.open_field_menu(f, x, y);
+                }
+                cx.set_cursor(mdshared_ui::cursor::Cursor::Default);
+                cx.request_redraw_all();
+            }
+            Event::Press {
+                x,
+                y,
+                button: Button::Left,
                 clicks,
             } => {
                 let h = self.hit_at(x, y);
+                // The other field's drag ends; the pressed field keeps its run of clicks, which
+                // makes the double and triple click.
+                match h {
+                    Some(Hit::Search) => self.check_ptr.cancel(),
+                    Some(Hit::CheckField) => self.search_ptr.cancel(),
+                    _ => {
+                        self.search_ptr.cancel();
+                        self.check_ptr.cancel();
+                    }
+                }
+                self.arm_field_scroll(cx);
                 match h {
                     Some(Hit::Title) => {
                         if clicks == 2 && self.prefs.full {
@@ -901,23 +1135,34 @@ impl App for Sozluk {
                             cx.drag_window();
                         }
                     }
+                    // Click places the caret, drag selects, double click a word, triple all.
                     Some(Hit::Search) => {
                         self.search_focus = true;
                         self.check_focus = false;
-                        let fx = self.search_x;
-                        if clicks >= 2 {
-                            self.search.select_all();
-                        } else {
-                            self.search
-                                .press(x - fx, &self.search_stops, cx.mods().shift);
-                        }
+                        let hit = self.field_hit(Field::Search, cx.scale());
+                        let (mods, now) = (cx.mods(), cx.now());
+                        self.search_ptr.press(
+                            &mut self.search,
+                            &mut self.gfx,
+                            hit,
+                            nearest_in(hit.area, (x, y)),
+                            mods,
+                            now,
+                        );
                     }
                     Some(Hit::CheckField) => {
                         self.check_focus = true;
                         self.search_focus = false;
-                        let fx = self.check_x;
-                        self.check_field
-                            .press(x - fx, &self.check_stops, cx.mods().shift);
+                        let hit = self.field_hit(Field::Check, cx.scale());
+                        let (mods, now) = (cx.mods(), cx.now());
+                        self.check_ptr.press(
+                            &mut self.check_field,
+                            &mut self.gfx,
+                            hit,
+                            nearest_in(hit.area, (x, y)),
+                            mods,
+                            now,
+                        );
                     }
                     Some(h) => {
                         if !matches!(h, Hit::Content) {
@@ -950,6 +1195,28 @@ impl App for Sozluk {
                 y,
                 button: Button::Left,
             } => {
+                let (now, scale) = (cx.now(), cx.scale());
+                let (sh, ch) = (
+                    self.field_hit(Field::Search, scale),
+                    self.field_hit(Field::Check, scale),
+                );
+                // A release where no move came still selects up to it.
+                if self
+                    .search_ptr
+                    .pointer_move(&mut self.search, &mut self.gfx, sh, (x, y), now)
+                    | self.check_ptr.pointer_move(
+                        &mut self.check_field,
+                        &mut self.gfx,
+                        ch,
+                        (x, y),
+                        now,
+                    )
+                {
+                    cx.request_redraw_all();
+                }
+                self.search_ptr.release();
+                self.check_ptr.release();
+                self.arm_field_scroll(cx);
                 if let Some(p) = self.pressed.take() {
                     if self.hit_at(x, y).as_ref() == Some(&p) {
                         self.activate(cx, p);
@@ -963,6 +1230,15 @@ impl App for Sozluk {
                 cx.request_redraw_all();
             }
             Event::Key(k) => {
+                if let Some((menu, _)) = &mut self.popup {
+                    if let Some(name) = &k.name {
+                        let outcome = menu.key(name);
+                        self.popup_result(outcome);
+                    }
+                    cx.request_redraw_all();
+                    return;
+                }
+                self.cancel_pointers(cx);
                 self.key(cx, k);
                 cx.request_redraw_all();
             }
@@ -984,7 +1260,18 @@ impl App for Sozluk {
                 cx.set_dark(self.dark());
                 cx.request_redraw_all();
             }
-            Event::Focus(_) | Event::Resize { .. } | Event::Scale(_) => cx.request_redraw_all(),
+            Event::Focus(_) => {
+                self.cancel_pointers(cx);
+                self.popup = None;
+                cx.request_redraw_all();
+            }
+            Event::Scale(scale) => {
+                self.search_ptr = Pointer::system(scale);
+                self.check_ptr = Pointer::system(scale);
+                self.arm_field_scroll(cx);
+                cx.request_redraw_all();
+            }
+            Event::Resize { .. } => cx.request_redraw_all(),
             Event::CloseRequested => {
                 self.prefs.save();
                 cx.exit();
@@ -1028,5 +1315,29 @@ impl App for Sozluk {
 
     fn draw(&mut self, cx: &mut Cx<'_, Msg>, p: &mut mdshared_ui::gfx::Painter, _damage: Rect) {
         crate::draw::frame(self, cx, p);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_press_beside_the_text_goes_to_its_nearest_end() {
+        let text = Rect::new(100.0, 10.0, 200.0, 20.0);
+        // Over the magnifier, left of the text: its start, on the text's middle line.
+        assert_eq!(nearest_in(text, (80.0, 5.0)), (100.0, 20.0));
+        // Right of the text: just inside its end.
+        assert_eq!(nearest_in(text, (320.0, 25.0)), (299.5, 20.0));
+        // Inside: unchanged.
+        assert_eq!(nearest_in(text, (150.0, 15.0)), (150.0, 15.0));
+    }
+
+    #[test]
+    fn a_text_rectangle_not_drawn_yet_leaves_the_press_alone() {
+        let none = Rect::new(0.0, 0.0, 0.0, 0.0);
+        assert_eq!(nearest_in(none, (5.0, 6.0)), (5.0, 6.0));
+        let nan = Rect::new(f32::NAN, 0.0, 10.0, 10.0);
+        assert_eq!(nearest_in(nan, (5.0, 6.0)), (5.0, 6.0));
     }
 }

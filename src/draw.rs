@@ -337,6 +337,7 @@ pub fn frame(s: &mut Sozluk, cx: &mut Cx<'_, Msg>, p: &mut Painter) {
         field.h - 8.0,
     );
     s.search_x = inner.x;
+    s.search_area = Rect::new(inner.x, inner.y + g.dy, inner.w, inner.h);
     let colors = FieldColors {
         text: pal.text,
         placeholder: pal.muted,
@@ -503,6 +504,10 @@ pub fn frame(s: &mut Sozluk, cx: &mut Cx<'_, Msg>, p: &mut Painter) {
         if !shown && tt <= 0.0 {
             s.toast = None;
         }
+    }
+    // ---- a field's right-click menu, over everything ----
+    if let Some((menu, _)) = &mut s.popup {
+        menu.draw_in(p, &pal, win);
     }
     s.hits = g.hits;
     cx.set_maximize_button(if full { Some(max) } else { None });
@@ -1323,6 +1328,7 @@ fn draw_check(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f3
     );
     let inner = Rect::new(field.x + 10.0, field.y + 4.0, field.w - 40.0, field.h - 8.0);
     s.check_x = inner.x;
+    s.check_area = Rect::new(inner.x, inner.y + g.dy, inner.w, inner.h);
     let colors = FieldColors {
         text: pal.text,
         placeholder: pal.muted,

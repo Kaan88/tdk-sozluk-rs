@@ -25,16 +25,17 @@ looks and moves like mdview and mdedit.
 
 ## The look
 
-- **Theme in three stages:** System, Light, Dark. The thumb slides; every colour of the window
+- **Theme in three stages:** System, Light (default), Dark. The thumb slides; every colour of the window
   glides to the new theme (360 ms, Fluent's point-to-point curve) instead of switching in one
   frame. System follows Windows' own switch live.
 - **Mica and Acrylic** (Windows 11) behind the title row, the bars, the status strip and the
-  full window's side panes; the reading area stays solid. Off, Mica (default) or Acrylic on the
+  full window's side panes; the reading area stays solid. Off (default), Mica or Acrylic on the
   Settings tab or with Ctrl+B. The frosted chrome follows the theme while it glides. Shown only
   while the window is active and never in high contrast (the toolkit's rule).
 - **Compact and Full:** a 420 px window to keep beside a subtitle editor (with always on top),
   or a three-pane window with matches, pinned and recent on the left and the subtitle tools on
-  the right. One click or Ctrl+M.
+  the right. One click or Ctrl+M. The window opens where it was left; the Full view also keeps
+  its size (the compact one is always 420 × 660).
 - **Motion:** pages fade and slide in, the tab underline and the list selection ride a spring,
   hovers fade, the search field's accent line grows from the middle, toasts rise and fall.
   Windows' "Animation effects" off turns them into cuts (the toolkit's policy).

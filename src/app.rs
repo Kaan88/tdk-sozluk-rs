@@ -367,8 +367,24 @@ impl Sozluk {
     // ---- window -------------------------------------------------------------------------------
 
     pub fn apply_size(&self, cx: &mut Cx<'_, Msg>) {
-        let (w, h) = if self.prefs.full { FULL } else { COMPACT };
+        let (w, h) = self.prefs.window_size();
         let _ = cx.window().request_inner_size(LogicalSize::new(w as f64, h as f64));
+    }
+
+    /// Puts the window back where it was, while it is still hidden, if that place is still on a
+    /// screen (a monitor unplugged since leaves the system's default place).
+    fn restore_position(&self, cx: &mut Cx<'_, Msg>) {
+        let Some((x, y)) = self.prefs.pos else { return };
+        let w = cx.window();
+        // The title row's middle must land on a monitor, so the window can always be dragged.
+        let (px, py) = (x + 200, y + 20);
+        let on_screen = w.available_monitors().any(|m| {
+            let (p, s) = (m.position(), m.size());
+            px >= p.x && py >= p.y && px < p.x + s.width as i32 && py < p.y + s.height as i32
+        });
+        if on_screen {
+            w.set_outer_position(winit::dpi::PhysicalPosition::new(x, y));
+        }
     }
 
     pub fn apply_on_top(&self, cx: &mut Cx<'_, Msg>) {
@@ -725,6 +741,7 @@ impl App for Sozluk {
         cx.set_dark(self.dark());
         cx.set_backdrop(self.prefs.backdrop, &Colors::of(self.dark()).pal);
         set_icons(cx);
+        self.restore_position(cx);
         self.apply_on_top(cx);
         self.ask_live_if_missing();
         if self.prefs.watch_clipboard {
@@ -884,6 +901,20 @@ impl App for Sozluk {
     }
 
     fn raw(&mut self, cx: &mut Cx<'_, Msg>, event: &winit::event::WindowEvent) {
+        // Position (both views) and the Full view's size are kept; saved on close. Not while
+        // minimized (Windows parks the window at -32000) or maximized.
+        let w = cx.window();
+        let parked = w.is_minimized().unwrap_or(false) || w.is_maximized();
+        match event {
+            winit::event::WindowEvent::Moved(p) if !parked && p.x > -30000 && p.y > -30000 => {
+                self.prefs.pos = Some((p.x, p.y));
+            }
+            winit::event::WindowEvent::Resized(s) if !parked && self.prefs.full && s.width > 0 => {
+                let l = s.to_logical::<f32>(w.scale_factor());
+                self.prefs.full_size = Some((l.width.round(), l.height.round()));
+            }
+            _ => {}
+        }
         // A subtitle or text file dropped on the window is checked.
         if let winit::event::WindowEvent::DroppedFile(path) = event
             && let Ok(bytes) = std::fs::read(path)

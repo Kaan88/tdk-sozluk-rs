@@ -57,7 +57,7 @@ fn main() {
         app.search.set_text(&q);
         app.update_results();
     }
-    let (w, h) = if app.prefs.full { app::FULL } else { app::COMPACT };
+    let (w, h) = app.prefs.window_size();
     let config = Config::new("Sözlük")
         .size(w, h)
         .min_size(380.0, 520.0)

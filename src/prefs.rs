@@ -29,13 +29,17 @@ pub struct Prefs {
     /// Words the line check takes as names.
     pub ignore: Vec<String>,
     pub last: Option<String>,
+    /// Where the window was (its outer top left, physical pixels), in either view.
+    pub pos: Option<(i32, i32)>,
+    /// The Full view's size (logical pixels) as last left; the compact view keeps its own size.
+    pub full_size: Option<(f32, f32)>,
 }
 
 impl Default for Prefs {
     fn default() -> Prefs {
         Prefs {
-            mode: Mode::System,
-            backdrop: Backdrop::Mica,
+            mode: Mode::Light,
+            backdrop: Backdrop::Off,
             full: false,
             on_top: false,
             live: true,
@@ -44,6 +48,8 @@ impl Default for Prefs {
             history: Vec::new(),
             ignore: Vec::new(),
             last: None,
+            pos: None,
+            full_size: None,
         }
     }
 }
@@ -71,10 +77,11 @@ impl Prefs {
         let Some(text) = Prefs::path().and_then(|path| settings::read(&path).ok().flatten()) else {
             return p;
         };
+        let (mut x, mut y, mut fw, mut fh) = (None, None, None, None);
         for (k, v) in settings::pairs(&text) {
             match k {
                 "theme" => p.mode = Mode::from_key(v),
-                "backdrop" => p.backdrop = Backdrop::parse(v).unwrap_or(Backdrop::Mica),
+                "backdrop" => p.backdrop = Backdrop::parse(v).unwrap_or(Backdrop::Off),
                 "full" => p.full = v == "1",
                 "on_top" => p.on_top = v == "1",
                 "live" => p.live = v != "0",
@@ -83,9 +90,15 @@ impl Prefs {
                 "history" => p.history = list(v),
                 "ignore" => p.ignore = list(v),
                 "last" => p.last = Some(unescape(v)).filter(|s| !s.is_empty()),
+                "x" => x = v.parse::<i32>().ok(),
+                "y" => y = v.parse::<i32>().ok(),
+                "full_w" => fw = v.parse::<f32>().ok().filter(|w| *w >= 380.0),
+                "full_h" => fh = v.parse::<f32>().ok().filter(|h| *h >= 520.0),
                 _ => {}
             }
         }
+        p.pos = x.zip(y);
+        p.full_size = fw.zip(fh);
         p
     }
 
@@ -106,7 +119,24 @@ impl Prefs {
         w.line("history", &join(&self.history));
         w.line("ignore", &join(&self.ignore));
         w.line("last", &escape(self.last.as_deref().unwrap_or("")));
+        if let Some((x, y)) = self.pos {
+            w.line("x", &x.to_string());
+            w.line("y", &y.to_string());
+        }
+        if let Some((fw, fh)) = self.full_size {
+            w.line("full_w", &format!("{fw:.0}"));
+            w.line("full_h", &format!("{fh:.0}"));
+        }
         let _ = settings::write_atomic(&path, &w.finish());
+    }
+
+    /// The window size for the current view: Full as the user left it, compact always the same.
+    pub fn window_size(&self) -> (f32, f32) {
+        if self.full {
+            self.full_size.unwrap_or(crate::app::FULL)
+        } else {
+            crate::app::COMPACT
+        }
     }
 
     fn prefs_backdrop_key(&self) -> &'static str {

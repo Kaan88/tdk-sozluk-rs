@@ -6,6 +6,7 @@ use mdshared_app::settings::{self, Writer, escape, unescape};
 
 use mdshared_app::backdrop::Backdrop;
 
+use crate::lang::Lang;
 use crate::theme::Mode;
 
 pub const APP: &str = "sozluk";
@@ -16,6 +17,8 @@ pub static DEMO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::
 #[derive(Clone, Debug)]
 pub struct Prefs {
     pub mode: Mode,
+    /// The interface language (Turkish unless English is chosen).
+    pub lang: Lang,
     /// Mica or Acrylic behind the chrome (Windows 11).
     pub backdrop: Backdrop,
     pub full: bool,
@@ -39,6 +42,7 @@ impl Default for Prefs {
     fn default() -> Prefs {
         Prefs {
             mode: Mode::Light,
+            lang: Lang::Tr,
             backdrop: Backdrop::Off,
             full: false,
             on_top: false,
@@ -81,6 +85,7 @@ impl Prefs {
         for (k, v) in settings::pairs(&text) {
             match k {
                 "theme" => p.mode = Mode::from_key(v),
+                "lang" => p.lang = Lang::from_key(v),
                 "backdrop" => p.backdrop = Backdrop::parse(v).unwrap_or(Backdrop::Off),
                 "full" => p.full = v == "1",
                 "on_top" => p.on_top = v == "1",
@@ -110,6 +115,7 @@ impl Prefs {
         let b = |x: bool| if x { "1" } else { "0" };
         let mut w = Writer::new("sozluk");
         w.line("theme", self.mode.key());
+        w.line("lang", self.lang.key());
         w.line("backdrop", self.prefs_backdrop_key());
         w.line("full", b(self.full));
         w.line("on_top", b(self.on_top));

@@ -1,9 +1,9 @@
 ﻿; Inno Setup script for Sözlük. Per user, no elevation, like Hub's other apps.
-; Build: ISCC.exe /DAppVersion=0.2.0 installer\sozluk.iss  (tools\build-installer.ps1 builds the exe first)
+; Build: ISCC.exe /DAppVersion=0.3.0 installer\sozluk.iss  (tools\build-installer.ps1 builds the exe first)
 ; The AppId below is the uninstall key {4FB1F2BC-2BEF-4862-B431-0EE595F96973}_is1 that Hub's catalog names. Never change it.
 
 #ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #define AppVersion "0.3.0"
 #endif
 #define Dash Pos("-", AppVersion)
 #if Dash > 0
@@ -38,12 +38,24 @@ OutputBaseFilename=Sozluk-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; Turkish, like the app; English when the setup is started with /LANG=english.
+LanguageDetectionMethod=none
+ShowLanguageDialog=no
 
 [Languages]
+Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[CustomMessages]
+turkish.DesktopIcon=Masaüstü kısayolu oluştur
+turkish.Shortcuts=Kısayollar:
+turkish.StartApp={#AppName} uygulamasını başlat
+english.DesktopIcon=Create a desktop shortcut
+english.Shortcuts=Shortcuts:
+english.StartApp=Start {#AppName}
+
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:DesktopIcon}"; GroupDescription: "{cm:Shortcuts}"; Flags: unchecked
 
 [Files]
 Source: "..\target\release\sozluk.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -54,4 +66,4 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; IconFilename: "{
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Description: "{cm:StartApp}"; Flags: nowait postinstall skipifsilent

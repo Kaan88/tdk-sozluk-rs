@@ -7,6 +7,7 @@ mod app;
 mod check;
 mod dict;
 mod draw;
+mod lang;
 mod prefs;
 mod theme;
 mod turkish;
@@ -23,6 +24,10 @@ fn main() {
         prefs::DEMO.store(true, std::sync::atomic::Ordering::Relaxed);
     }
     let mut app = app::Sozluk::new();
+    if let Some(l) = arg("--lang") {
+        app.prefs.lang = lang::Lang::from_key(&l);
+        lang::set(app.prefs.lang);
+    }
     if let Some(t) = arg("--theme") {
         app.prefs.mode = theme::Mode::from_key(&t);
     }

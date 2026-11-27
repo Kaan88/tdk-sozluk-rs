@@ -2,6 +2,8 @@
 //! the tabs with their sliding underline, the page (fading and sliding in when it changes), the
 //! status strip and the toast.
 
+use crate::lang::{en, tl};
+use crate::tf;
 use std::time::Instant;
 
 use mdshared_ui::anim::{Animator, fluent};
@@ -248,7 +250,7 @@ pub fn frame(s: &mut Sozluk, cx: &mut Cx<'_, Msg>, p: &mut Painter) {
     let inner = Rect::new(field.x + 32.0, field.y + 4.0, field.w - 32.0 - 34.0, field.h - 8.0);
     s.search_x = inner.x;
     let colors = FieldColors { text: pal.text, placeholder: pal.muted, selection: pal.selection, caret: pal.text };
-    s.search.draw_blinking(p, g.anim, "search", s.blink, inner, Face::Ui, 14.0, &colors, "Search TDK  (Ctrl+K)", s.search_focus && focused);
+    s.search.draw_blinking(p, g.anim, "search", s.blink, inner, Face::Ui, 14.0, &colors, tl("TDK'de ara  (Ctrl+K)", "Search TDK  (Ctrl+K)"), s.search_focus && focused);
     s.search_stops = p.caret_stops(Face::Ui, 14.0, &s.search.display());
     g.hit(Rect::new(field.x, field.y, field.w - 32.0, field.h), Hit::Search);
     if !s.search.is_empty() {
@@ -268,8 +270,8 @@ pub fn frame(s: &mut Sozluk, cx: &mut Cx<'_, Msg>, p: &mut Painter) {
         let hv = w::hover_t(g.anim, h.clone(), g.hovered(&h));
         let on = *t == s.tab;
         let label = match t {
-            Tab::Pinned if !s.prefs.pinned.is_empty() => format!("Pinned {}", s.prefs.pinned.len()),
-            Tab::Check if !s.findings().is_empty() => format!("Check {}", s.findings().len()),
+            Tab::Pinned if !s.prefs.pinned.is_empty() => tf!("Sabitlenen {}", "Pinned {}", s.prefs.pinned.len()),
+            Tab::Check if !s.findings().is_empty() => tf!("Denetle {}", "Check {}", s.findings().len()),
             _ => t.label().to_string(),
         };
         let face = if on { Face::Semibold } else { Face::Ui };
@@ -339,10 +341,10 @@ pub fn frame(s: &mut Sozluk, cx: &mut Cx<'_, Msg>, p: &mut Painter) {
     p.rbox(Rect::new(12.0, st.cy() - 3.5, 7.0, 7.0), 3.5, if dot { c.success } else { c.tag });
     p.text(Face::Ui, 12.0, 26.0, st.cy(), &text, pal.muted, ww * 0.6);
     let hint = match s.tab {
-        Tab::Lookup => "Ctrl+D pin · Ctrl+Shift+C copy",
-        Tab::Check => "Ctrl+Enter fix all · drop an .srt",
-        Tab::Pinned => "Ctrl+1–4 switch tabs",
-        Tab::Database => "Ctrl+T theme · Ctrl+B backdrop",
+        Tab::Lookup => tl("Ctrl+D sabitle · Ctrl+Shift+C kopyala", "Ctrl+D pin · Ctrl+Shift+C copy"),
+        Tab::Check => tl("Ctrl+Enter tümünü düzelt · .srt bırakın", "Ctrl+Enter fix all · drop an .srt"),
+        Tab::Pinned => tl("Ctrl+1–4 sekme değiştir", "Ctrl+1–4 switch tabs"),
+        Tab::Database => tl("Ctrl+T tema · Ctrl+B arka plan", "Ctrl+T theme · Ctrl+B backdrop"),
     };
     let hw = p.measure(Face::Ui, 12.0, hint);
     if hw < ww * 0.45 {
@@ -370,9 +372,9 @@ pub fn frame(s: &mut Sozluk, cx: &mut Cx<'_, Msg>, p: &mut Painter) {
 fn status_text(s: &Sozluk) -> (bool, String) {
     let n = s.ix.len();
     match s.counts {
-        Some((ok, nf, _)) if ok + nf >= n as u64 => (true, format!("Offline · {} words, all entries", fmt_n(n as u64))),
-        Some((ok, _, _)) => (true, format!("Offline · {} words · {} entries", fmt_n(n as u64), fmt_n(ok))),
-        None => (false, format!("{} words · entries from sozluk.gov.tr", fmt_n(n as u64))),
+        Some((ok, nf, _)) if ok + nf >= n as u64 => (true, tf!("Çevrim dışı · {} sözcük, tüm maddeler", "Offline · {} words, all entries", fmt_n(n as u64))),
+        Some((ok, _, _)) => (true, tf!("Çevrim dışı · {} sözcük · {} madde", "Offline · {} words · {} entries", fmt_n(n as u64), fmt_n(ok))),
+        None => (false, tf!("{} sözcük · maddeler sozluk.gov.tr'den", "{} words · entries from sozluk.gov.tr", fmt_n(n as u64))),
     }
 }
 
@@ -381,7 +383,7 @@ pub fn fmt_n(n: u64) -> String {
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
         if i > 0 && (s.len() - i).is_multiple_of(3) {
-            out.push(',');
+            out.push(if en() { ',' } else { '.' });
         }
         out.push(ch);
     }
@@ -422,7 +424,7 @@ fn draw_lookup(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect, full
         let syn = synonyms(s, es);
         if !syn.is_empty() {
             let y = area.y + h + 6.0;
-            w::label(p, &g.c, area.x, y, "Synonyms in its meanings");
+            w::label(p, &g.c, area.x, y, tl("Anlamlarındaki eş anlamlılar", "Synonyms in its meanings"));
             let labels: Vec<String> = syn.iter().map(|x| diff_label(x, &cur)).collect();
             let ch = chips_open_as(g, p, area.x, y + 22.0, area.w, &labels, &syn, "syn");
             h += 28.0 + ch + 6.0;
@@ -449,7 +451,7 @@ fn chips_open_as(g: &mut Pg<'_>, p: &mut Painter, x: f32, y: f32, width: f32, la
 fn draw_results(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect) -> f32 {
     let pal = g.c.pal;
     if s.results.is_empty() {
-        p.text(Face::Ui, 13.0, area.x + 10.0, area.y + 20.0, "No headword starts so.", pal.muted, area.w);
+        p.text(Face::Ui, 13.0, area.x + 10.0, area.y + 20.0, tl("Böyle başlayan madde yok.", "No headword starts so."), pal.muted, area.w);
         return 40.0;
     }
     let row_h = 32.0;
@@ -496,7 +498,7 @@ fn draw_side_list(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect) {
     let cur = s.current.clone();
     if !s.search.text().trim().is_empty() && !s.results.is_empty() && s.showing_results() {
         let items: Vec<String> = s.results.clone();
-        let title = format!("Matches ({})", items.len());
+        let title = tf!("Eşleşmeler ({})", "Matches ({})", items.len());
         // Results open by index so the keyboard selection lines up.
         w::label(p, &g.c, area.x + 8.0, y + 4.0, &title);
         y += 26.0;
@@ -519,20 +521,20 @@ fn draw_side_list(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect) {
     }
     let pinned = s.prefs.pinned.clone();
     if !pinned.is_empty() {
-        section(p, g, &mut y, "Pinned", &pinned, cur.as_deref());
+        section(p, g, &mut y, tl("Sabitlenen", "Pinned"), &pinned, cur.as_deref());
     }
     let hist: Vec<String> = s.prefs.history.iter().take(30).cloned().collect();
     if !hist.is_empty() {
-        section(p, g, &mut y, "Recent", &hist, cur.as_deref());
+        section(p, g, &mut y, tl("Son bakılanlar", "Recent"), &hist, cur.as_deref());
     }
     if pinned.is_empty() && hist.is_empty() {
-        p.paragraph(Face::Ui, 12.5, area.x + 8.0, y + 8.0, area.w - 16.0, "Words you open and pin show here.", pal.muted);
+        p.paragraph(Face::Ui, 12.5, area.x + 8.0, y + 8.0, area.w - 16.0, tl("Açtığınız ve sabitlediğiniz sözcükler burada görünür.", "Words you open and pin show here."), pal.muted);
     }
 }
 
 fn draw_side_tools(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect) {
     let pal = g.c.pal;
-    p.text(Face::Semibold, 14.0, area.x, area.y + 8.0, "For subtitles", pal.text, area.w);
+    p.text(Face::Semibold, 14.0, area.x, area.y + 8.0, tl("Altyazı için", "For subtitles"), pal.text, area.w);
     let mut y = area.y + 30.0;
     let Some(cur) = s.current.clone() else { return };
     let found = matches!(s.lookup, Lookup::Found(_));
@@ -545,10 +547,10 @@ fn draw_side_tools(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect) 
     let card_h = 40.0 + rows * 30.0 + 34.0;
     let card = Rect::new(area.x, y, area.w, card_h);
     w::card(p, &g.c, card);
-    w::label(p, &g.c, card.x + 12.0, card.y + 8.0, "Synonyms in its meanings");
+    w::label(p, &g.c, card.x + 12.0, card.y + 8.0, tl("Anlamlarındaki eş anlamlılar", "Synonyms in its meanings"));
     let mut ry = card.y + 34.0;
     if syn.is_empty() {
-        let none = if found { "TDK lists none for this word." } else { "The meanings are not downloaded yet." };
+        let none = if found { tl("TDK bu sözcük için eş anlamlı vermiyor.", "TDK lists none for this word.") } else { tl("Anlamlar henüz indirilmedi.", "The meanings are not downloaded yet.") };
         p.text(Face::Ui, 12.5, card.x + 12.0, ry + 12.0, none, pal.muted, card.w - 24.0);
         ry += 30.0;
     }
@@ -561,7 +563,7 @@ fn draw_side_tools(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect) 
         p.text_right(Face::Semibold, 12.0, r.right() - 8.0, r.cy(), &txt, ink);
         ry += 30.0;
     }
-    p.paragraph(Face::Ui, 11.5, card.x + 12.0, ry + 4.0, card.w - 24.0, "Letters, and the change against the open word.", pal.muted);
+    p.paragraph(Face::Ui, 11.5, card.x + 12.0, ry + 4.0, card.w - 24.0, tl("Harf sayısı ve açık sözcüğe göre farkı.", "Letters, and the change against the open word."), pal.muted);
     y += card_h + 12.0;
 
     // Other spellings.
@@ -569,7 +571,7 @@ fn draw_side_tools(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect) 
     if !vars.is_empty() {
         let card = Rect::new(area.x, y, area.w, 40.0 + 30.0 * vars.len() as f32);
         w::card(p, &g.c, card);
-        w::label(p, &g.c, card.x + 12.0, card.y + 8.0, "Other spellings in TDK");
+        w::label(p, &g.c, card.x + 12.0, card.y + 8.0, tl("TDK'deki öteki yazımlar", "Other spellings in TDK"));
         let mut ry = card.y + 34.0;
         for v in &vars {
             let r = Rect::new(card.x + 4.0, ry, card.w - 8.0, 28.0);
@@ -581,7 +583,7 @@ fn draw_side_tools(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect) 
     }
     // Copy buttons.
     let b = Rect::new(area.x, y, area.w, 32.0);
-    g.btn(p, b, &format!("Copy \u{201c}{cur}\u{201d}"), Hit::CopyHead, false);
+    g.btn(p, b, &tf!("Kopyala: \u{201c}{cur}\u{201d}", "Copy \u{201c}{cur}\u{201d}"), Hit::CopyHead, false);
 }
 
 /// The open entry. Returns the height used.
@@ -591,14 +593,14 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
     let wid = area.w;
     let Some(cur) = s.current.clone() else {
         let y = area.y + 30.0;
-        p.text(Face::Semibold, 18.0, x, y, "Look up a word", pal.text, wid);
+        p.text(Face::Semibold, 18.0, x, y, tl("Sözcük arayın", "Look up a word"), pal.text, wid);
         p.paragraph(
             Face::Ui,
             13.0,
             x,
             y + 22.0,
             wid,
-            "Type to search all 81,017 headwords of the Güncel Türkçe Sözlük. Spelling variants are found too: kağıt finds kâğıt.",
+            tl("Güncel Türkçe Sözlük'ün 81.017 maddesinin tümünde aramak için yazın. Yazım farkları da bulunur: kağıt yazınca kâğıt çıkar.", "Type to search all 81,017 headwords of the Güncel Türkçe Sözlük. Spelling variants are found too: kağıt finds kâğıt."),
             pal.muted,
         );
         return 120.0;
@@ -638,9 +640,9 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
             meta.push(tags.join(", "));
         }
         let n: usize = es.iter().map(|e| e.meanings.len()).sum();
-        meta.push(if n == 1 { "1 meaning".into() } else { format!("{n} meanings") });
+        meta.push(if !en() { format!("{n} anlam") } else if n == 1 { "1 meaning".into() } else { format!("{n} meanings") });
     }
-    meta.push(format!("{} letters", letters(&cur)));
+    meta.push(tf!("{} harf", "{} letters", letters(&cur)));
     p.text(Face::Ui, 12.0, x, y + 8.0, &meta.join(" · "), pal.muted, wid);
     y += 26.0;
 
@@ -649,9 +651,9 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
     if !vars.is_empty() && !big {
         let v = &vars[0];
         let how = if v.contains(' ') != cur.contains(' ') {
-            if v.contains(' ') { "Also written apart" } else { "Also written together" }
+            if v.contains(' ') { tl("Ayrı yazılışı da var", "Also written apart") } else { tl("Bitişik yazılışı da var", "Also written together") }
         } else {
-            "Also in TDK"
+            tl("TDK'de ayrıca", "Also in TDK")
         };
         let extra = match s.store.lookup(v) {
             Lookup::Found(es) => es
@@ -665,7 +667,7 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
         let h = w::infobar(p, &g.c, x, y, wid - 52.0, glyph::INFO, pal.accent, g.c.info_bg, g.c.info_line, &text);
         let open = Rect::new(x + wid - 48.0, y, 48.0, h);
         g.row(p, open, Hit::Open(v.clone()));
-        p.text_center(Face::Ui, 12.5, open, "Open", pal.accent);
+        p.text_center(Face::Ui, 12.5, open, tl("Aç", "Open"), pal.accent);
         y += h + 14.0;
     }
 
@@ -710,19 +712,19 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
                     y = my.max(y + 24.0) + 12.0;
                 }
                 if !e.origin.is_empty() {
-                    p.text(Face::Ui, 12.0, x, y + 8.0, &format!("Köken: {}", e.origin), pal.muted, wid);
+                    p.text(Face::Ui, 12.0, x, y + 8.0, &tf!("Köken: {}", "Origin: {}", e.origin), pal.muted, wid);
                     y += 26.0;
                 }
                 if !e.compounds.is_empty() {
                     p.fill(Rect::new(x, y, wid, 1.0), pal.line);
                     y += 12.0;
-                    w::label(p, &g.c, x, y, "Compounds");
+                    w::label(p, &g.c, x, y, tl("Birleşik sözcükler", "Compounds"));
                     y += 22.0;
                     let comp: Vec<String> = e.compounds.iter().take(40).cloned().collect();
                     y += g.chips(p, x, y, wid, &comp, &format!("comp{ei}"), true) + 14.0;
                 }
                 if !e.idioms.is_empty() {
-                    w::label(p, &g.c, x, y, "Idioms and sayings");
+                    w::label(p, &g.c, x, y, tl("Atasözleri ve deyimler", "Idioms and sayings"));
                     y += 24.0;
                     for id in e.idioms.iter().take(30) {
                         let r = Rect::new(x - 6.0, y, wid + 6.0, 26.0);
@@ -737,18 +739,18 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
             }
         }
         Lookup::NotFound => {
-            y += w::infobar(p, &g.c, x, y, wid, glyph::INFO, pal.muted, g.c.card, pal.line, "TDK has no entry under this exact form. Try the stem, or another spelling.");
+            y += w::infobar(p, &g.c, x, y, wid, glyph::INFO, pal.muted, g.c.card, pal.line, tl("TDK'de tam bu biçimde bir madde yok. Kökünü ya da başka bir yazımı deneyin.", "TDK has no entry under this exact form. Try the stem, or another spelling."));
         }
         Lookup::Missing => {
             let pending = s.live_pending.contains(&cur);
             let (glyph_, text) = if !s.prefs.live {
-                (glyph::INFO, "This entry is not downloaded yet, and asking sozluk.gov.tr is off (Database tab).".to_string())
+                (glyph::INFO, tl("Bu madde henüz indirilmedi; sozluk.gov.tr'ye sorma kapalı (Ayarlar sekmesi).", "This entry is not downloaded yet, and asking sozluk.gov.tr is off (Settings tab).").to_string())
             } else if pending {
-                (glyph::GLOBE, "Asking sozluk.gov.tr…".to_string())
+                (glyph::GLOBE, tl("sozluk.gov.tr'ye soruluyor…", "Asking sozluk.gov.tr…").to_string())
             } else if let Some(e) = &s.live_error {
-                (glyph::WARN, format!("Could not reach sozluk.gov.tr: {e}"))
+                (glyph::WARN, tf!("sozluk.gov.tr'ye ulaşılamadı: {e}", "Could not reach sozluk.gov.tr: {e}"))
             } else {
-                (glyph::GLOBE, "Not downloaded yet.".to_string())
+                (glyph::GLOBE, tl("Henüz indirilmedi.", "Not downloaded yet.").to_string())
             };
             let h = w::infobar(p, &g.c, x, y, wid, glyph_, if s.live_error.is_some() { pal.warn } else { pal.accent }, if s.live_error.is_some() { g.c.warn_card } else { g.c.info_bg }, if s.live_error.is_some() { g.c.warn_line } else { g.c.info_line }, &text);
             y += h + 10.0;
@@ -762,7 +764,7 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
                 y += 18.0;
             } else if s.live_error.is_some() {
                 let b = Rect::new(x, y, 90.0, 30.0);
-                g.btn(p, b, "Try again", Hit::Retry, false);
+                g.btn(p, b, tl("Yeniden dene", "Try again"), Hit::Retry, false);
                 y += 40.0;
             }
         }
@@ -788,24 +790,24 @@ fn draw_check(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f3
     let inner = Rect::new(field.x + 10.0, field.y + 4.0, field.w - 40.0, field.h - 8.0);
     s.check_x = inner.x;
     let colors = FieldColors { text: pal.text, placeholder: pal.muted, selection: pal.selection, caret: pal.text };
-    s.check_field.draw_blinking(p, g.anim, "check", s.blink, inner, Face::Ui, 14.0, &colors, "Type a line, paste, or drop an .srt", s.check_focus);
+    s.check_field.draw_blinking(p, g.anim, "check", s.blink, inner, Face::Ui, 14.0, &colors, tl("Bir satır yazın, yapıştırın ya da .srt bırakın", "Type a line, paste, or drop an .srt"), s.check_focus);
     s.check_stops = p.caret_stops(Face::Ui, 14.0, &s.check_field.display());
     g.hit(Rect::new(field.x, field.y, field.w - 30.0, field.h), Hit::CheckField);
     if !s.check_text.is_empty() {
         g.icon_btn(p, Rect::new(field.right() - 31.0, field.y + 3.0, 28.0, 28.0), glyph::CLOSE, Hit::CheckClear, false);
     }
-    g.btn(p, Rect::new(field.right() + 8.0, y, paste_w, 34.0), "Paste", Hit::CheckPaste, false);
+    g.btn(p, Rect::new(field.right() + 8.0, y, paste_w, 34.0), tl("Yapıştır", "Paste"), Hit::CheckPaste, false);
     y += 46.0;
 
     // Watch the clipboard.
     let tr = Rect::new(x, y, 38.0, 20.0);
     w::toggle(p, g.anim, &g.c, tr, s.prefs.watch_clipboard, "watch");
-    p.text(Face::Ui, 12.5, x + 48.0, tr.cy(), "Check what I copy", pal.text, wid);
+    p.text(Face::Ui, 12.5, x + 48.0, tr.cy(), tl("Kopyaladığımı denetle", "Check what I copy"), pal.text, wid);
     g.hit(Rect::new(x, y - 4.0, 180.0, 28.0), Hit::CheckWatch);
     let lines = s.check_text.lines().count();
     let words = s.check_tokens.len();
     if words > 0 {
-        p.text_right(Face::Ui, 12.0, x + wid, tr.cy(), &format!("{lines} {} · {words} {}", if lines == 1 { "line" } else { "lines" }, if words == 1 { "word" } else { "words" }), pal.muted);
+        p.text_right(Face::Ui, 12.0, x + wid, tr.cy(), &if en() { format!("{lines} {} · {words} {}", if lines == 1 { "line" } else { "lines" }, if words == 1 { "word" } else { "words" }) } else { format!("{lines} satır · {words} sözcük") }, pal.muted);
     }
     y += 32.0;
 
@@ -820,7 +822,7 @@ fn draw_check(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f3
             pal.accent,
             g.c.info_bg,
             g.c.info_line,
-            "Every word is looked up in TDK, by its stem too: kâğıdı finds kâğıt. Spelling differences are fixed in one click; pairs such as hala / hâlâ are left for you, with both meanings.",
+            tl("Her sözcük TDK'de, köküyle de aranır: kâğıdı yazınca kâğıt bulunur. Yazım farkları tek tıkla düzeltilir; hala / hâlâ gibi ikisi de sözlükte olan çiftler, iki anlamıyla birlikte size bırakılır.", "Every word is looked up in TDK, by its stem too: kâğıdı finds kâğıt. Spelling differences are fixed in one click; pairs such as hala / hâlâ are left for you, with both meanings."),
         );
         return y + h - page.y + 12.0;
     }
@@ -915,13 +917,13 @@ fn draw_check(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f3
     let findings = s.findings();
     let fixable = findings.iter().filter(|&&i| matches!(toks[i].kind, Kind::Spelling { .. })).count();
     let head = match findings.len() {
-        0 => "Nothing to fix".to_string(),
-        1 => "1 finding".to_string(),
-        n => format!("{n} findings"),
+        0 => tl("Düzeltilecek bir şey yok", "Nothing to fix").to_string(),
+        1 => tl("1 bulgu", "1 finding").to_string(),
+        n => tf!("{n} bulgu", "{n} findings"),
     };
     p.text(Face::Semibold, 14.0, x, y + 15.0, &head, pal.text, wid);
     if fixable > 0 {
-        let label = format!("Fix {fixable} and copy");
+        let label = tf!("Düzelt ({fixable}) ve kopyala", "Fix {fixable} and copy");
         let bw = w::text_button_w(p, &label);
         g.btn(p, Rect::new(x + wid - bw, y, bw, 30.0), &label, Hit::CheckFixAll, true);
     }
@@ -940,9 +942,9 @@ fn draw_check(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f3
                 let note_x = r.x + 52.0 + ow + aw + fw;
                 let bw = 54.0;
                 if note_x + 80.0 < r.right() - bw - 8.0 {
-                    p.text(Face::Ui, 11.5, note_x, r.cy(), why, pal.muted, r.right() - bw - 16.0 - note_x);
+                    p.text(Face::Ui, 11.5, note_x, r.cy(), why_text(why), pal.muted, r.right() - bw - 16.0 - note_x);
                 }
-                g.btn(p, Rect::new(r.right() - bw - 6.0, r.y + 6.0, bw, 28.0), "Fix", Hit::Apply(i, fix.clone()), false);
+                g.btn(p, Rect::new(r.right() - bw - 6.0, r.y + 6.0, bw, 28.0), tl("Düzelt", "Fix"), Hit::Apply(i, fix.clone()), false);
                 y += 46.0;
             }
             Kind::Pair { other } => {
@@ -961,7 +963,7 @@ fn draw_check(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f3
                             .and_then(|e| e.meanings.first())
                             .map(|m| format!("{} {}: {}", head, m.tags.first().cloned().unwrap_or_default(), m.text))
                             .unwrap_or(head),
-                        _ => format!("{head}: meaning not downloaded yet"),
+                        _ => tf!("{head}: anlamı henüz indirilmedi", "{head}: meaning not downloaded yet"),
                     }
                 };
                 let m1 = mean(&t.word);
@@ -972,13 +974,13 @@ fn draw_check(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f3
                 let r = Rect::new(x, y, wid, 44.0 + h1 + h2 + 44.0);
                 p.frame(r, RADIUS, g.c.card, g.c.info_line);
                 p.rbox(Rect::new(r.x + 12.0, r.y + 16.0, 8.0, 8.0), 2.0, pal.accent);
-                p.text(Face::Semibold, 13.5, r.x + 30.0, r.y + 20.0, &format!("{} or {}?", t.word, other), pal.text, r.w - 40.0);
+                p.text(Face::Semibold, 13.5, r.x + 30.0, r.y + 20.0, &if en() { format!("{} or {}?", t.word, other) } else { format!("{} {}, {} {}?", t.word, crate::lang::mi(&t.word), other, crate::lang::mi(other)) }, pal.text, r.w - 40.0);
                 let mut my = r.y + 38.0;
                 my += p.paragraph(Face::Ui, 12.5, r.x + 12.0, my, tw2, &m1, pal.muted) + 2.0;
                 my += p.paragraph(Face::Ui, 12.5, r.x + 12.0, my, tw2, &m2, pal.muted) + 8.0;
-                let keep_w = w::text_button_w(p, "Keep");
-                g.btn(p, Rect::new(r.x + 12.0, my, keep_w, 28.0), "Keep", Hit::Keep(t.word.clone()), false);
-                let use_l = format!("Use {other}");
+                let keep_w = w::text_button_w(p, tl("Böyle kalsın", "Keep"));
+                g.btn(p, Rect::new(r.x + 12.0, my, keep_w, 28.0), tl("Böyle kalsın", "Keep"), Hit::Keep(t.word.clone()), false);
+                let use_l = tf!("Bunu yaz: {other}", "Use {other}");
                 let uw = w::text_button_w(p, &use_l);
                 g.btn(p, Rect::new(r.x + 20.0 + keep_w, my, uw, 28.0), &use_l, Hit::Apply(i, other.clone()), true);
                 y += r.h + 6.0;
@@ -998,7 +1000,7 @@ fn draw_check(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f3
     };
     if !unknown.is_empty() {
         y += 6.0;
-        w::label(p, &g.c, x, y, "Not found (and no stem found)");
+        w::label(p, &g.c, x, y, tl("Bulunamadı (kökü de bulunamadı)", "Not found (and no stem found)"));
         y += 22.0;
         let hov = unknown.iter().position(|u| g.hovered(&Hit::Ignore(u.clone())));
         let (rects, h) = w::chip_rows(p, g.anim, &g.c, x, y, wid, &unknown, hov, "unknown");
@@ -1006,7 +1008,7 @@ fn draw_check(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f3
             g.hit(r, Hit::Ignore(u.clone()));
         }
         y += h + 6.0;
-        p.text(Face::Ui, 11.5, x, y + 8.0, "Click one to take it as a name from now on.", pal.muted, wid);
+        p.text(Face::Ui, 11.5, x, y + 8.0, tl("Tıkladığınız sözcük bundan sonra özel ad sayılır.", "Click one to take it as a name from now on."), pal.muted, wid);
         y += 22.0;
     }
     let names: Vec<String> = {
@@ -1020,7 +1022,7 @@ fn draw_check(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f3
     };
     if !names.is_empty() {
         y += 6.0;
-        p.paragraph(Face::Ui, 12.0, x, y, wid, &format!("Taken as names: {}", names.join(", ")), pal.muted);
+        p.paragraph(Face::Ui, 12.0, x, y, wid, &tf!("Özel ad sayılanlar: {}", "Taken as names: {}", names.join(", ")), pal.muted);
         y += 24.0;
     }
     y - page.y + 12.0
@@ -1034,10 +1036,10 @@ fn draw_pinned(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f
     let wid = page.w - 24.0;
     let mut y = page.y + 12.0;
     let pinned = s.prefs.pinned.clone();
-    w::label(p, &g.c, x + 4.0, y, "Pinned");
+    w::label(p, &g.c, x + 4.0, y, tl("Sabitlenen", "Pinned"));
     y += 24.0;
     if pinned.is_empty() {
-        y += w::infobar(p, &g.c, x, y, wid, STAR, pal.accent, g.c.info_bg, g.c.info_line, "Pin a word with the star or Ctrl+D to keep it here.") + 12.0;
+        y += w::infobar(p, &g.c, x, y, wid, STAR, pal.accent, g.c.info_bg, g.c.info_line, tl("Sözcükleri burada tutmak için yıldızla ya da Ctrl+D ile sabitleyin.", "Pin a word with the star or Ctrl+D to keep it here.")) + 12.0;
     }
     for wd in &pinned {
         let r = Rect::new(x, y, wid, 34.0);
@@ -1057,7 +1059,7 @@ fn draw_pinned(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f
     y += 12.0;
     let hist: Vec<String> = s.prefs.history.iter().take(20).cloned().collect();
     if !hist.is_empty() {
-        w::label(p, &g.c, x + 4.0, y, "Recent");
+        w::label(p, &g.c, x + 4.0, y, tl("Son bakılanlar", "Recent"));
         y += 24.0;
         y += g.chips(p, x, y, wid, &hist, "recent", true) + 12.0;
     }
@@ -1074,45 +1076,56 @@ fn draw_database(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) ->
     let n = s.ix.len() as u64;
 
     // Appearance.
-    let card = Rect::new(x, y, wid, 150.0);
+    let card = Rect::new(x, y, wid, 190.0);
     w::card(p, &g.c, card);
-    p.text(Face::Semibold, 13.5, card.x + 14.0, card.y + 20.0, "Appearance", pal.text, wid);
+    p.text(Face::Semibold, 13.5, card.x + 14.0, card.y + 20.0, tl("Görünüm", "Appearance"), pal.text, wid);
     let seg_w = (card.w - 130.0).min(300.0);
-    p.text(Face::Ui, 12.5, card.x + 14.0, card.y + 56.0, "Theme", pal.muted, 100.0);
+    p.text(Face::Ui, 12.5, card.x + 14.0, card.y + 56.0, tl("Tema", "Theme"), pal.muted, 100.0);
     let r = Rect::new(card.right() - 14.0 - seg_w, card.y + 42.0, seg_w, 30.0);
     let hov = match &g.hover {
         Some(Hit::Theme(i)) => Some(*i),
         _ => None,
     };
-    let segs = w::segmented_text(p, g.anim, &g.c, r, &["System", "Light", "Dark"], s.prefs.mode.index(), hov, "theme-card");
+    let segs = w::segmented_text(p, g.anim, &g.c, r, &[tl("Sistem", "System"), tl("Açık", "Light"), tl("Koyu", "Dark")], s.prefs.mode.index(), hov, "theme-card");
     for (i, r) in segs.into_iter().enumerate() {
         g.hit(r, Hit::Theme(i));
     }
-    p.text(Face::Ui, 12.5, card.x + 14.0, card.y + 96.0, "Backdrop", pal.muted, 100.0);
+    p.text(Face::Ui, 12.5, card.x + 14.0, card.y + 96.0, tl("Arka plan", "Backdrop"), pal.muted, 100.0);
     let r = Rect::new(card.right() - 14.0 - seg_w, card.y + 82.0, seg_w, 30.0);
     let hov = match &g.hover {
         Some(Hit::Backdrop(i)) => Some(*i),
         _ => None,
     };
-    let segs = w::segmented_text(p, g.anim, &g.c, r, &["Off", "Mica", "Acrylic"], s.prefs.backdrop.index(), hov, "backdrop");
+    let segs = w::segmented_text(p, g.anim, &g.c, r, &[tl("Kapalı", "Off"), "Mica", tl("Akrilik", "Acrylic")], s.prefs.backdrop.index(), hov, "backdrop");
     for (i, r) in segs.into_iter().enumerate() {
         g.hit(r, Hit::Backdrop(i));
     }
-    p.text(Face::Ui, 11.5, card.x + 14.0, card.y + 132.0, "Windows 11: behind the bars and side panes, while the window is active.", pal.muted, card.w - 28.0);
+    p.text(Face::Ui, 12.5, card.x + 14.0, card.y + 136.0, "Dil · Language", pal.muted, 110.0);
+    let r = Rect::new(card.right() - 14.0 - seg_w, card.y + 122.0, seg_w, 30.0);
+    let hov = match &g.hover {
+        Some(Hit::Lang(i)) => Some(*i),
+        _ => None,
+    };
+    let names: Vec<&str> = crate::lang::Lang::ALL.iter().map(|l| l.name()).collect();
+    let segs = w::segmented_text(p, g.anim, &g.c, r, &names, s.prefs.lang.index(), hov, "lang");
+    for (i, r) in segs.into_iter().enumerate() {
+        g.hit(r, Hit::Lang(i));
+    }
+    p.text(Face::Ui, 11.5, card.x + 14.0, card.y + 172.0, tl("Windows 11: çubukların ve yan bölmelerin arkasında, pencere etkinken.", "Windows 11: behind the bars and side panes, while the window is active."), pal.muted, card.w - 28.0);
     y += card.h + 12.0;
 
     if let Some(until) = s.live_blocked_until
         && until > Instant::now()
     {
         let secs = (until - Instant::now()).as_secs();
-        y += w::infobar(p, &g.c, x, y, wid, glyph::WARN, pal.warn, g.c.warn_card, g.c.warn_line, &format!("sozluk.gov.tr asked us to slow down. Live lookups wait {secs} s more; everything local keeps working.")) + 10.0;
+        y += w::infobar(p, &g.c, x, y, wid, glyph::WARN, pal.warn, g.c.warn_card, g.c.warn_line, &tf!("sozluk.gov.tr yavaşlamamızı istedi. Canlı aramalar {secs} sn daha bekleyecek; yerel olan her şey çalışıyor.", "sozluk.gov.tr asked us to slow down. Live lookups wait {secs} s more; everything local keeps working.")) + 10.0;
     }
 
     // Full entries.
     let card_h = 150.0;
     let card = Rect::new(x, y, wid, card_h);
     w::card(p, &g.c, card);
-    p.text(Face::Semibold, 13.5, card.x + 14.0, card.y + 20.0, "Full entries", pal.text, wid);
+    p.text(Face::Semibold, 13.5, card.x + 14.0, card.y + 20.0, tl("Tam maddeler", "Full entries"), pal.text, wid);
     let (ok, nf, err) = s.counts.unwrap_or((0, 0, 0));
     let done = (ok + nf) as f32 / n.max(1) as f32;
     let bar = Rect::new(card.x + 14.0, card.y + 40.0, card.w - 28.0, 4.0);
@@ -1124,10 +1137,10 @@ fn draw_database(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) ->
         p.text_right(Face::Ui, 12.5, card.right() - 14.0, y, v, pal.text);
     };
     if s.store.has_crawl() {
-        line(p, card.y + 62.0, "Downloaded", &format!("{} of {} ({:.1}%)", fmt_n(ok + nf), fmt_n(n), done * 100.0));
-        line(p, card.y + 84.0, "Found", &fmt_n(ok));
-        line(p, card.y + 106.0, "Not found under that form", &fmt_n(nf));
-        line(p, card.y + 128.0, "To retry", &fmt_n(err));
+        line(p, card.y + 62.0, tl("İndirilen", "Downloaded"), &tf!("{} / {} (%{})", "{} of {} ({}%)", fmt_n(ok + nf), fmt_n(n), crate::lang::decimal(f64::from(done) * 100.0, 1)));
+        line(p, card.y + 84.0, tl("Bulunan", "Found"), &fmt_n(ok));
+        line(p, card.y + 106.0, tl("Bu biçimde bulunmayan", "Not found under that form"), &fmt_n(nf));
+        line(p, card.y + 128.0, tl("Yeniden denenecek", "To retry"), &fmt_n(err));
     } else {
         p.paragraph(
             Face::Ui,
@@ -1135,7 +1148,7 @@ fn draw_database(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) ->
             card.x + 14.0,
             card.y + 54.0,
             card.w - 28.0,
-            "No gts.sqlite found. Put the crawl's file next to sozluk.exe or in %LOCALAPPDATA%\\sozluk, or set SOZLUK_DB. The subtitle skill's copy is found by itself.",
+            tl("gts.sqlite bulunamadı. Tarama dosyasını sozluk.exe'nin yanına ya da %LOCALAPPDATA%\\sozluk klasörüne koyun ya da SOZLUK_DB'yi ayarlayın. Altyazı becerisinin kopyası kendiliğinden bulunur.", "No gts.sqlite found. Put the crawl's file next to sozluk.exe or in %LOCALAPPDATA%\\sozluk, or set SOZLUK_DB. The subtitle skill's copy is found by itself."),
             pal.muted,
         );
     }
@@ -1144,14 +1157,14 @@ fn draw_database(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) ->
     // Headword list.
     let card = Rect::new(x, y, wid, 112.0);
     w::card(p, &g.c, card);
-    p.text(Face::Semibold, 13.5, card.x + 14.0, card.y + 20.0, "Headword list (built in)", pal.text, wid);
+    p.text(Face::Semibold, 13.5, card.x + 14.0, card.y + 20.0, tl("Madde listesi (yerleşik)", "Headword list (built in)"), pal.text, wid);
     let line = |p: &mut Painter, y: f32, k: &str, v: &str| {
         p.text(Face::Ui, 12.5, card.x + 14.0, y, k, pal.muted, card.w * 0.5);
         p.text_right(Face::Ui, 12.5, card.right() - 14.0, y, v, pal.text);
     };
-    line(p, card.y + 46.0, "Words", &format!("{} ({} multiword)", fmt_n(n), fmt_n(s.ix.multiword as u64)));
-    line(p, card.y + 68.0, "Fetched", &s.ix.fetched);
-    line(p, card.y + 90.0, "Live answers kept", &fmt_n(s.cache_n));
+    line(p, card.y + 46.0, tl("Sözcük", "Words"), &tf!("{} ({} çok sözcüklü)", "{} ({} multiword)", fmt_n(n), fmt_n(s.ix.multiword as u64)));
+    line(p, card.y + 68.0, tl("Alındığı gün", "Fetched"), &s.ix.fetched);
+    line(p, card.y + 90.0, tl("Saklanan canlı yanıtlar", "Live answers kept"), &fmt_n(s.cache_n));
     y += card.h + 12.0;
 
     // Switches and buttons.
@@ -1159,13 +1172,13 @@ fn draw_database(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) ->
     w::card(p, &g.c, card);
     let tr = Rect::new(card.right() - 52.0, card.y + 16.0, 38.0, 20.0);
     w::toggle(p, g.anim, &g.c, tr, s.prefs.live, "live");
-    p.text(Face::Ui, 13.0, card.x + 14.0, tr.cy(), "Ask sozluk.gov.tr when an entry is missing", pal.text, card.w - 80.0);
+    p.text(Face::Ui, 13.0, card.x + 14.0, tr.cy(), tl("Eksik madde için sozluk.gov.tr'ye sor", "Ask sozluk.gov.tr when an entry is missing"), pal.text, card.w - 80.0);
     g.hit(Rect::new(card.x, card.y + 6.0, card.w, 40.0), Hit::DbLive);
     let by = card.y + 52.0;
-    let b1 = w::text_button_w(p, "Read again");
-    g.btn(p, Rect::new(card.x + 14.0, by, b1, 28.0), "Read again", Hit::DbRefresh, false);
-    let b2 = w::text_button_w(p, "Show file");
-    g.btn(p, Rect::new(card.x + 22.0 + b1, by, b2, 28.0), "Show file", Hit::DbFolder, false);
+    let b1 = w::text_button_w(p, tl("Yeniden oku", "Read again"));
+    g.btn(p, Rect::new(card.x + 14.0, by, b1, 28.0), tl("Yeniden oku", "Read again"), Hit::DbRefresh, false);
+    let b2 = w::text_button_w(p, tl("Dosyayı göster", "Show file"));
+    g.btn(p, Rect::new(card.x + 22.0 + b1, by, b2, 28.0), tl("Dosyayı göster", "Show file"), Hit::DbFolder, false);
     y += card.h + 12.0;
 
     if let Some(path) = &s.store.crawl_path {
@@ -1174,4 +1187,13 @@ fn draw_database(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) ->
     }
     let _ = Mode::ALL;
     y + 12.0 - page.y
+}
+
+/// The note beside a spelling fix, in the interface language.
+fn why_text(why: &str) -> &'static str {
+    match why {
+        "written apart" => tl("ayrı yazılır", "written apart"),
+        "TDK spelling of the stem" => tl("kökün TDK yazımı", "TDK spelling of the stem"),
+        _ => tl("TDK yazımı", "TDK spelling"),
+    }
 }

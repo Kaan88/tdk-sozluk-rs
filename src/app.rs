@@ -1,5 +1,7 @@
 //! The window: its state, what input does, and the live-lookup worker.
 
+use crate::lang::tl;
+use crate::tf;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::mpsc::{Sender, channel};
@@ -33,10 +35,10 @@ impl Tab {
     pub const ALL: [Tab; 4] = [Tab::Lookup, Tab::Check, Tab::Pinned, Tab::Database];
     pub fn label(self) -> &'static str {
         match self {
-            Tab::Lookup => "Look up",
-            Tab::Check => "Check",
-            Tab::Pinned => "Pinned",
-            Tab::Database => "Settings",
+            Tab::Lookup => tl("Ara", "Look up"),
+            Tab::Check => tl("Denetle", "Check"),
+            Tab::Pinned => tl("Sabitlenen", "Pinned"),
+            Tab::Database => tl("Ayarlar", "Settings"),
         }
     }
     pub fn index(self) -> usize {
@@ -53,6 +55,7 @@ pub enum Hit {
     Close,
     Theme(usize),
     Backdrop(usize),
+    Lang(usize),
     Size(bool),
     OnTop,
     Back,
@@ -158,6 +161,7 @@ impl Sozluk {
     pub fn new() -> Sozluk {
         let data_dir = mdshared_app::settings::data_dir(crate::prefs::APP);
         let prefs = Prefs::load();
+        crate::lang::set(prefs.lang);
         let ix = Index::load();
         let store = Store::open(data_dir.as_deref());
         let mut s = Sozluk {
@@ -317,7 +321,7 @@ impl Sozluk {
 
     pub fn copy(&mut self, cx: &mut Cx<'_, Msg>, text: &str) {
         if platform::set_clipboard_text(text) {
-            let t = format!("Copied \u{201c}{text}\u{201d}");
+            let t = tf!("Kopyalandı: \u{201c}{text}\u{201d}", "Copied \u{201c}{text}\u{201d}");
             self.toast(cx, &t);
         }
     }
@@ -402,13 +406,13 @@ impl Sozluk {
         self.prefs.backdrop = b;
         self.prefs.save();
         let label = match b {
-            Backdrop::Off => "Backdrop off",
+            Backdrop::Off => tl("Arka plan kapalı", "Backdrop off"),
             Backdrop::Mica => "Mica",
-            Backdrop::Acrylic => "Acrylic",
+            Backdrop::Acrylic => tl("Akrilik", "Acrylic"),
         };
         self.toast(cx, label);
         if b != Backdrop::Off && !platform::backdrop_available() {
-            self.toast(cx, "This Windows has no Mica or Acrylic");
+            self.toast(cx, tl("Bu Windows'ta Mica ve Akrilik yok", "This Windows has no Mica or Acrylic"));
         }
     }
 
@@ -432,6 +436,14 @@ impl Sozluk {
             Hit::Max => cx.toggle_maximize(),
             Hit::Theme(i) => self.set_mode(cx, Mode::ALL[i]),
             Hit::Backdrop(i) => self.set_backdrop(cx, Backdrop::from_index(i)),
+            Hit::Lang(i) => {
+                let l = crate::lang::Lang::ALL[i];
+                self.prefs.lang = l;
+                crate::lang::set(l);
+                self.prefs.save();
+                self.toast(cx, l.name());
+                cx.request_redraw_all();
+            }
             Hit::Size(full) => {
                 if self.prefs.full != full {
                     self.prefs.full = full;
@@ -444,7 +456,7 @@ impl Sozluk {
                 self.prefs.on_top = !self.prefs.on_top;
                 self.apply_on_top(cx);
                 self.prefs.save();
-                let t = if self.prefs.on_top { "Stays on top" } else { "No longer on top" };
+                let t = if self.prefs.on_top { tl("Hep üstte", "Stays on top") } else { tl("Artık üstte değil", "No longer on top") };
                 self.toast(cx, t);
             }
             Hit::Back => self.go_back(),
@@ -473,7 +485,7 @@ impl Sozluk {
                 if let Some(w) = self.current.clone() {
                     let on = self.prefs.toggle_pin(&w);
                     self.prefs.save();
-                    self.toast(cx, if on { "Pinned" } else { "Unpinned" });
+                    self.toast(cx, if on { tl("Sabitlendi", "Pinned") } else { tl("Sabitleme kaldırıldı", "Unpinned") });
                 }
             }
             Hit::Unpin(w) => {
@@ -506,7 +518,7 @@ impl Sozluk {
                 self.check_field.set_text(fixed.lines().next().unwrap_or(""));
                 if platform::set_clipboard_text(&fixed) {
                     self.last_clip = Some(fixed);
-                    self.toast(cx, "Fixed text copied");
+                    self.toast(cx, tl("Düzeltilmiş metin kopyalandı", "Fixed text copied"));
                 }
             }
             Hit::Apply(i, with) => self.apply_fix(i, &with),
@@ -536,7 +548,7 @@ impl Sozluk {
                 if let Some(w) = self.current.clone() {
                     self.lookup = self.store.lookup(&w);
                 }
-                self.toast(cx, "Database read again");
+                self.toast(cx, tl("Veritabanı yeniden okundu", "Database read again"));
             }
             Hit::Retry => {
                 self.live_blocked_until = None;
@@ -925,7 +937,7 @@ impl App for Sozluk {
             self.check_field.set_text(text.lines().next().unwrap_or(""));
             self.set_check_text(&text);
             let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            self.toast(cx, &format!("Checking {name}"));
+            self.toast(cx, &tf!("Denetleniyor: {name}", "Checking {name}"));
             cx.request_redraw_all();
         }
     }

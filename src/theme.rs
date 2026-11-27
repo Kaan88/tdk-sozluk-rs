@@ -19,9 +19,9 @@ impl Mode {
 
     pub fn label(self) -> &'static str {
         match self {
-            Mode::System => "Follow the system",
-            Mode::Light => "Light",
-            Mode::Dark => "Dark",
+            Mode::System => crate::lang::tl("Sistemi izle", "Follow the system"),
+            Mode::Light => crate::lang::tl("Açık", "Light"),
+            Mode::Dark => crate::lang::tl("Koyu", "Dark"),
         }
     }
 

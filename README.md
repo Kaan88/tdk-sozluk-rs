@@ -2,91 +2,111 @@
 
 # Sözlük (tdk-sozluk-rs)
 
-The TDK Güncel Türkçe Sözlük on the desktop, offline: look a word up, check a subtitle line
-against it, keep the words you need pinned. Drawn with
-[markdown-shared-rs](https://github.com/Kaan88/markdown-shared-rs), pinned at `ffffe3e`, so it
-looks and moves like mdview and mdedit.
+**Türkçe** · [English](README.en.md)
 
-## What it does
+TDK Güncel Türkçe Sözlük masaüstünde ve çevrim dışı: sözcük arayın, altyazı satırlarını
+sözlüğe göre denetleyin, gerek duyduğunuz sözcükleri sabitleyin.
+[markdown-shared-rs](https://github.com/Kaan88/markdown-shared-rs) ile çizilir (`ffffe3e`
+sürümüne sabit); bu yüzden mdview ve mdedit gibi görünür ve devinir. Arayüz öntanımlı olarak
+Türkçedir; İngilizceye Ayarlar sekmesinden tek tıkla geçilir.
 
-- **Look up.** All 81,017 headwords are built into the program, so search works with no files
-  and no network. Typing without Turkish letters works: `kagit` finds `kâğıt`. Spelling variants
-  are shown (`yeraltı` / `yer altı`, `hala` / `hâlâ`). A full entry shows meanings with their
-  word types, the first example and its author, the origin, compounds and idioms; cross
-  references (`► nişanlı`) open their target.
-- **Check.** Type, paste, copy (with "Check what I copy" on) or drop an `.srt`: every word is
-  looked up, by its stem too (`kâğıdı` → `kâğıt`, `görünüyordu` → `görünmek`). TDK spellings are
-  fixed in one click ("Fix 3 and copy"); pairs where both forms are TDK words are left to you
-  with both meanings; unknown words can be taken as names from then on.
-- **For subtitles.** The synonyms TDK lists inside a word's meanings, with their letter count
-  and the difference against the open word, for a CPS cut.
-- **Pinned and recent** words, kept between runs.
-- **Settings.** Theme and backdrop; where the full entries come from and how far the download is.
+## Kurulum
 
-## The look
+[Sürümler](https://github.com/Kaan88/tdk-sozluk-rs/releases/latest) sayfasından
+`Sozluk-Setup-<sürüm>.exe`: kullanıcıya kurulur, yönetici izni istemez, Windows 10 1809 ve
+sonrası. [mdhub](https://github.com/Kaan88/mdhub) içinde de var.
 
-- **Theme in three stages:** System, Light (default), Dark. The thumb slides; every colour of the window
-  glides to the new theme (360 ms, Fluent's point-to-point curve) instead of switching in one
-  frame. System follows Windows' own switch live.
-- **Mica and Acrylic** (Windows 11) behind the title row, the bars, the status strip and the
-  full window's side panes; the reading area stays solid. Off (default), Mica or Acrylic on the
-  Settings tab or with Ctrl+B. The frosted chrome follows the theme while it glides. Shown only
-  while the window is active and never in high contrast (the toolkit's rule).
-- **Compact and Full:** a 420 px window to keep beside a subtitle editor (with always on top),
-  or a three-pane window with matches, pinned and recent on the left and the subtitle tools on
-  the right. One click or Ctrl+M. The window opens where it was left; the Full view also keeps
-  its size (the compact one is always 420 × 660).
-- **Motion:** pages fade and slide in, the tab underline and the list selection ride a spring,
-  hovers fade, the search field's accent line grows from the middle, toasts rise and fall.
-  Windows' "Animation effects" off turns them into cuts (the toolkit's policy).
+## Ne yapar
 
-## Colours
+- **Ara.** 81.017 maddenin tümü programın içindedir; arama dosyasız ve ağsız çalışır. Türkçe
+  harfler olmadan yazmak da olur: `kagit` yazınca `kâğıt` bulunur. Yazım farkları gösterilir
+  (`yeraltı` / `yer altı`, `hala` / `hâlâ`). Tam madde; anlamları sözcük türleriyle, ilk örneği
+  ve yazarını, kökeni, birleşik sözcükleri ve deyimleri gösterir. Göndermeler (`► nişanlı`)
+  tıklanınca hedefini açar.
+- **Denetle.** Yazın, yapıştırın, kopyalayın ("Kopyaladığımı denetle" açıkken) ya da bir `.srt`
+  bırakın: her sözcük, kökü de dahil sözlükte aranır (`kâğıdı` → `kâğıt`, `görünüyordu` →
+  `görünmek`). TDK yazımları tek tıkla düzeltilir ("Düzelt (3) ve kopyala"). İki biçimi de
+  sözlükte olan çiftler iki anlamıyla birlikte size bırakılır: "hala mı, hâlâ mı?". Bilinmeyen
+  sözcükler bundan sonrası için özel ad sayılabilir.
+- **Altyazı için.** TDK'nin bir sözcüğün anlamlarında verdiği eş anlamlılar, harf sayıları ve
+  açık sözcüğe göre farklarıyla: CPS kısaltması için.
+- **Sabitlenen ve son bakılan** sözcükler, kapatıp açınca da kalır.
+- **Ayarlar.** Tema, arka plan ve dil (Türkçe ya da English); tam maddelerin nereden geldiği ve
+  indirmenin ne kadar ilerlediği.
 
-TDK's own, from sozluk.gov.tr's stylesheet: red `#c62828`, paper `#f7f5ec`, slate `#2c3e50`,
-sienna `#a0522d` for word types; in the dark, navy `#1a1a2e`, cards `#24243e` and gold
-`#daa520`. Two shades are moved within their family to reach 4.5:1 for small text (see
-`src/theme.rs`).
+## Görünüm
 
-## Data
+- **Üç aşamalı tema:** Sistem, Açık (öntanımlı), Koyu. Seçici kayar; penceredeki her renk tek
+  karede değişmek yerine yeni temaya süzülür (360 ms, Fluent'ın noktadan noktaya eğrisi).
+  Sistem seçiliyken Windows'un kendi ayarı anında izlenir.
+- **Mica ve Akrilik** (Windows 11): başlık satırının, çubukların, durum şeridinin ve geniş
+  pencerenin yan bölmelerinin arkasında; okuma alanı düz kalır. Ayarlar sekmesinden ya da
+  Ctrl+B ile Kapalı (öntanımlı), Mica ya da Akrilik. Buzlu kısımlar tema değişirken onunla
+  birlikte süzülür. Yalnızca pencere etkinken ve yüksek karşıtlık kapalıyken görünür (araç
+  takımının kuralı).
+- **Dar ve Geniş:** altyazı düzenleyicisinin yanında durmak için 420 px'lik bir pencere (hep
+  üstte seçeneğiyle) ya da solda eşleşmeler, sabitlenenler ve son bakılanlar, sağda altyazı
+  araçları olan üç bölmeli bir pencere. Tek tık ya da Ctrl+M. Pencere bırakıldığı yerde açılır;
+  geniş görünüm boyutunu da hatırlar (dar görünüm hep 420 × 660).
+- **Devinim:** sayfalar solarak ve kayarak gelir, sekme alt çizgisi ve liste seçimi yayla
+  kayar, üzerine gelince renkler yumuşakça değişir, arama kutusunun vurgu çizgisi ortadan
+  büyür, bildirimler yükselip iner. Windows'ta "Animasyon efektleri" kapalıysa hepsi anında
+  olur (araç takımının kuralı).
 
-- Headwords: `data/gts-headwords.txt` (sozluk.gov.tr/data/autocomplete.json, 2026-11-27).
-- Full entries: the crawl's `gts.sqlite` (from the subtitle skill's `scripts/tdk-crawl.py`),
-  opened read-only, so it can be read while the crawl still writes. Found at `$SOZLUK_DB`, next to
-  `sozluk.exe`, in `%LOCALAPPDATA%\sozluk`, or in the skill's `assets/tdk`.
-- Missing entries are asked from sozluk.gov.tr, one at a time, and kept in
-  `%LOCALAPPDATA%\sozluk\live-cache.sqlite`. Off with one switch on the Database tab. A 429
-  (rate limit) pauses live lookups for 90 s.
+## Renkler
 
-## Keys
+TDK'nin kendi renkleri, sozluk.gov.tr'nin stil dosyasından: kırmızı `#c62828`, kâğıt
+`#f7f5ec`, arduvaz `#2c3e50`, sözcük türleri için toprak kızılı `#a0522d`; koyu temada lacivert
+`#1a1a2e`, kartlar `#24243e` ve altın `#daa520`. Küçük yazıda 4,5:1 karşıtlığa ulaşmak için
+iki ton kendi ailesi içinde kaydırıldı (bkz. `src/theme.rs`).
 
-| Key | Does |
+## Veri
+
+- Madde listesi: `data/gts-headwords.txt` (sozluk.gov.tr/data/autocomplete.json, 2026-11-27).
+- Tam maddeler: taramanın `gts.sqlite` dosyası (altyazı becerisinin `scripts/tdk-crawl.py`
+  betiğinden). Salt okunur açılır, bu yüzden tarama sürerken de okunabilir. `$SOZLUK_DB`'de,
+  `sozluk.exe`'nin yanında, `%LOCALAPPDATA%\sozluk` içinde ya da becerinin `assets/tdk`
+  klasöründe aranır.
+- Eksik maddeler sozluk.gov.tr'ye teker teker sorulur ve
+  `%LOCALAPPDATA%\sozluk\live-cache.sqlite` içinde saklanır. Ayarlar sekmesindeki tek
+  düğmeyle kapatılır. 429 (hız sınırı) yanıtı canlı aramaları 90 sn durdurur.
+
+## Tuşlar
+
+| Tuş | İşlev |
 |---|---|
-| Ctrl+K, Ctrl+L, F3 | Search |
-| Up, Down, Enter, Esc | Pick a match, open it, close the list or clear |
-| Typing anywhere | Starts a search |
-| Ctrl+1 … Ctrl+4 | Look up, Check, Pinned, Database |
-| Alt+Left, Alt+Right, mouse back/forward | Back, forward |
-| Ctrl+D | Pin or unpin the word |
-| Ctrl+Shift+C | Copy the word |
-| Ctrl+Shift+V | Check the clipboard |
-| Ctrl+Enter (Check) | Fix all and copy |
-| Ctrl+T | Next theme |
-| Ctrl+M | Compact or Full |
-| Ctrl+B | Next backdrop (Off, Mica, Acrylic) |
+| Ctrl+K, Ctrl+L, F3 | Ara |
+| Yukarı, Aşağı, Enter, Esc | Eşleşme seç, aç, listeyi kapat ya da temizle |
+| Herhangi bir yerde yazmak | Aramayı başlatır |
+| Ctrl+1 … Ctrl+4 | Ara, Denetle, Sabitlenen, Ayarlar |
+| Alt+Sol, Alt+Sağ, fare geri/ileri | Geri, ileri |
+| Ctrl+D | Sözcüğü sabitle ya da sabitlemeyi kaldır |
+| Ctrl+Shift+C | Sözcüğü kopyala |
+| Ctrl+Shift+V | Panodakini denetle |
+| Ctrl+Enter (Denetle) | Tümünü düzelt ve kopyala |
+| Ctrl+T | Sonraki tema |
+| Ctrl+M | Dar ya da Geniş |
+| Ctrl+B | Sonraki arka plan (Kapalı, Mica, Akrilik) |
 
-## Icon
+## Simge
 
-`assets/logo.svg` and `assets/logo-wordmark.svg`; `tools/make_icon.py` draws the same tile into
-`assets/icon.ico` (in the exe, by `build.rs`), the PNGs and the raw pixels of the window and
-taskbar icons. The tile is TDK's red; over the open book is the breve of ğ.
+`assets/logo.svg` ve `assets/logo-wordmark.svg`; `tools/make_icon.py` aynı kutucuğu
+`assets/icon.ico` (exe'nin içine `build.rs` koyar), PNG'ler ve pencere ile görev çubuğu
+simgelerinin ham pikselleri olarak çizer. Kutucuk TDK kırmızısıdır; açık kitabın üstünde ğ'nin
+kısalık işareti durur.
 
-## Build
+## Derleme
 
 ```sh
 cargo run --release
 cargo test
 ```
 
-`--demo` starts without reading or writing the settings; with it, `--word W`, `--tab check`,
-`--check "text\nmore"`, `--search q`, `--theme light|dark|system`, `--full` set the first screen
-(for screenshots). `--demo-switch` flips the theme 1.5 s after start.
+`--demo` ayarları okumadan ve yazmadan başlatır; onunla birlikte `--word W`, `--tab check`,
+`--check "metin\ndaha"`, `--search q`, `--theme light|dark|system`, `--lang tr|en`, `--full`
+ilk ekranı belirler (ekran görüntüleri için). `--demo-switch` temayı açılıştan 1,5 sn sonra
+değiştirir.
+
+## Lisans
+
+MIT, bkz. [LICENSE](LICENSE). Madde listesi ve maddeler TDK'nindir (sozluk.gov.tr).

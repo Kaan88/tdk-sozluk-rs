@@ -29,6 +29,8 @@ pub struct Prefs {
     pub watch_clipboard: bool,
     /// Check for a newer offline dictionary once a day, and download it.
     pub auto_dict: bool,
+    /// Show how an entry used to read (needs `history.sqlite`).
+    pub history_notes: bool,
     /// When the offline dictionary was last checked (seconds since 1970).
     pub dict_checked: u64,
     pub pinned: Vec<String>,
@@ -53,6 +55,7 @@ impl Default for Prefs {
             live: true,
             watch_clipboard: false,
             auto_dict: true,
+            history_notes: true,
             dict_checked: 0,
             pinned: Vec::new(),
             history: Vec::new(),
@@ -102,6 +105,7 @@ impl Prefs {
                 "live" => p.live = v != "0",
                 "watch_clipboard" => p.watch_clipboard = v == "1",
                 "auto_dict" => p.auto_dict = v != "0",
+                "history_notes" => p.history_notes = v != "0",
                 "dict_checked" => p.dict_checked = v.parse().unwrap_or(0),
                 "pinned" => p.pinned = list(v),
                 "history" => p.history = list(v),
@@ -134,6 +138,7 @@ impl Prefs {
         w.line("live", b(self.live));
         w.line("watch_clipboard", b(self.watch_clipboard));
         w.line("auto_dict", b(self.auto_dict));
+        w.line("history_notes", b(self.history_notes));
         w.line("dict_checked", &self.dict_checked.to_string());
         w.line("pinned", &join(&self.pinned));
         w.line("history", &join(&self.history));

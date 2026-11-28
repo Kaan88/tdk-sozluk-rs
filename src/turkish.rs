@@ -144,6 +144,69 @@ pub fn search_key(s: &str) -> String {
         .collect()
 }
 
+/// How the last spoken word of a number is said, which decides the suffix after it: the last
+/// nonzero digit when the ones digit is not 0 (`2019` → dokuz), else the tens word, else yüz or bin.
+fn last_number_word(digits: &str) -> &'static str {
+    const ONES: [&str; 10] = [
+        "sıfır", "bir", "iki", "üç", "dört", "beş", "altı", "yedi", "sekiz", "dokuz",
+    ];
+    const TENS: [&str; 10] = [
+        "", "on", "yirmi", "otuz", "kırk", "elli", "altmış", "yetmiş", "seksen", "doksan",
+    ];
+    let d: Vec<usize> = digits
+        .chars()
+        .filter_map(|c| c.to_digit(10))
+        .map(|n| n as usize)
+        .collect();
+    let at = |from_end: usize| d.len().checked_sub(from_end + 1).map_or(0, |i| d[i]);
+    if at(0) != 0 {
+        ONES[at(0)]
+    } else if at(1) != 0 {
+        TENS[at(1)]
+    } else if at(2) != 0 {
+        "yüz"
+    } else if d.len() > 3 && d[..d.len() - 3].iter().any(|&n| n != 0) {
+        "bin"
+    } else {
+        "sıfır"
+    }
+}
+
+/// `word`'s suffix with the vowel `a`/`e` by its last vowel (`dative`: `ya`/`ye` after a vowel) and,
+/// for the ablative, `d` or `t` by its last letter.
+fn year_suffix(digits: &str, ablative: bool) -> String {
+    let word = last_number_word(digits);
+    let back = word
+        .chars()
+        .rev()
+        .find(|c| "aıoueiöü".contains(*c))
+        .is_some_and(|c| "aıou".contains(c));
+    let vowel = if back { 'a' } else { 'e' };
+    let ends_in_vowel = word.ends_with(|c| "aıoueiöü".contains(c));
+    if ablative {
+        let d = if word.ends_with(|c| "çfhkpsşt".contains(c)) {
+            't'
+        } else {
+            'd'
+        };
+        format!("{d}{vowel}n")
+    } else if ends_in_vowel {
+        format!("y{vowel}")
+    } else {
+        vowel.to_string()
+    }
+}
+
+/// A year with the suffix of "from": `2019` → `2019'dan`, `2024` → `2024'ten`.
+pub fn year_ablative(y: &str) -> String {
+    format!("{y}'{}", year_suffix(y, true))
+}
+
+/// A year with the suffix of "to": `2019` → `2019'a`, `2007` → `2007'ye`.
+pub fn year_dative(y: &str) -> String {
+    format!("{y}'{}", year_suffix(y, false))
+}
+
 /// Letters in a word or phrase (spaces and punctuation not counted), for a CPS cut.
 pub fn letters(s: &str) -> usize {
     s.chars().filter(|c| c.is_alphabetic()).count()
@@ -221,5 +284,35 @@ mod tests {
     fn letter_count() {
         assert_eq!(letters("yasa dışı"), 8);
         assert_eq!(letters("yeraltı"), 7);
+    }
+
+    #[test]
+    fn years_take_the_suffix_of_their_last_word() {
+        // (year, from, to)
+        for (y, from, to) in [
+            ("2019", "2019'dan", "2019'a"),
+            ("2024", "2024'ten", "2024'e"),
+            ("2007", "2007'den", "2007'ye"),
+            ("2010", "2010'dan", "2010'a"),
+            ("2020", "2020'den", "2020'ye"),
+            ("2000", "2000'den", "2000'e"),
+            ("2011", "2011'den", "2011'e"),
+            ("2012", "2012'den", "2012'ye"),
+            ("2013", "2013'ten", "2013'e"),
+            ("2015", "2015'ten", "2015'e"),
+            ("2016", "2016'dan", "2016'ya"),
+            ("2018", "2018'den", "2018'e"),
+            ("2030", "2030'dan", "2030'a"),
+            ("2040", "2040'tan", "2040'a"),
+            ("2050", "2050'den", "2050'ye"),
+            ("2060", "2060'tan", "2060'a"),
+            ("2070", "2070'ten", "2070'e"),
+            ("2080", "2080'den", "2080'e"),
+            ("2090", "2090'dan", "2090'a"),
+            ("2100", "2100'den", "2100'e"),
+        ] {
+            assert_eq!(year_ablative(y), from, "{y}");
+            assert_eq!(year_dative(y), to, "{y}");
+        }
     }
 }

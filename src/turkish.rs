@@ -50,9 +50,10 @@ pub fn is_all_caps(s: &str) -> bool {
     letters().count() >= 2 && letters().all(char::is_uppercase)
 }
 
-/// The text of a file: UTF-8 or UTF-16 by its byte order mark, UTF-8 when it is valid UTF-8,
-/// and otherwise Windows-1254, the code page Turkish subtitles are written in when they are not
-/// UTF-8 (where ç ğ ı ö ş ü would otherwise all become U+FFFD).
+/// The text of a file: UTF-8 or UTF-16 by its byte order mark, UTF-8 when it is UTF-8 (a few
+/// stray bytes cost a character each), and otherwise Windows-1254, the code page Turkish
+/// subtitles are written in when they are not UTF-8 (where ç ğ ı ö ş ü would otherwise all
+/// become U+FFFD).
 pub fn decode_text(bytes: &[u8]) -> String {
     if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
         return String::from_utf8_lossy(rest).into_owned();
@@ -69,9 +70,21 @@ pub fn decode_text(bytes: &[u8]) -> String {
     if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
         return utf16(rest, u16::from_be_bytes);
     }
-    match std::str::from_utf8(bytes) {
-        Ok(s) => s.to_owned(),
-        Err(_) => bytes.iter().map(|&b| cp1254(b)).collect(),
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_owned();
+    }
+    // In Windows-1254 nearly every byte above 0x7F breaks UTF-8; in UTF-8 with a stray byte,
+    // nearly none does.
+    let lossy = String::from_utf8_lossy(bytes);
+    let broken = lossy
+        .chars()
+        .filter(|&c| c == char::REPLACEMENT_CHARACTER)
+        .count();
+    let high = bytes.iter().filter(|&&b| b > 0x7F).count();
+    if broken * 10 < high {
+        lossy.into_owned()
+    } else {
+        bytes.iter().map(|&b| cp1254(b)).collect()
     }
 }
 
@@ -189,6 +202,10 @@ mod tests {
         let ansi = b"g\xF6r\xFC\xFE\xFCr\xFCz \xFDl\xFDk \xDD\xF0ne";
         assert_eq!(decode_text(ansi), word);
         assert_eq!(decode_text(b"\x80 \x93a\x94"), "\u{20AC} \u{201C}a\u{201D}");
+        // UTF-8 with one stray byte stays UTF-8: only that byte is lost.
+        let mut stray = "görüşürüz ılık İğne görüşürüz".as_bytes().to_vec();
+        stray.insert(0, 0xFF);
+        assert_eq!(decode_text(&stray), "\u{FFFD}görüşürüz ılık İğne görüşürüz");
     }
 
     #[test]

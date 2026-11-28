@@ -19,6 +19,7 @@ use winit::window::WindowLevel;
 
 use crate::check::{self, Kind, Token};
 use crate::dict::{Index, Lookup, Store, fetch_live};
+use crate::download;
 use crate::prefs::Prefs;
 use crate::theme::{Colors, Mode};
 use mdshared_app::backdrop::Backdrop;
@@ -86,12 +87,18 @@ pub enum Hit {
     DbLive,
     DbFolder,
     DbRefresh,
+    /// The offline dictionary's daily check, on or off.
+    DictAuto,
+    /// Check for a newer offline dictionary now.
+    DictCheck,
     Retry,
     Content,
 }
 
 pub enum Msg {
     Live(String, Result<Option<String>, String>),
+    /// From the offline dictionary's worker.
+    Dict(download::Event),
 }
 
 pub struct Toast {
@@ -166,6 +173,11 @@ pub struct Sozluk {
     pub blink: Option<Duration>,
     pub counts: Option<(u64, u64, u64)>,
     pub cache_n: u64,
+    /// The offline dictionary: what its worker last said, whether one is running, and the
+    /// snapshot installed.
+    pub dict: Option<download::Event>,
+    pub dict_busy: bool,
+    pub dict_installed: Option<download::Snapshot>,
 }
 
 pub use mdshared_ui::gfx::Rect;
@@ -199,6 +211,10 @@ impl Sozluk {
         let prefs = Prefs::load();
         crate::lang::set(prefs.lang);
         let ix = Index::load();
+        // A dictionary downloaded last time but not yet put in place goes in before it is opened.
+        if let Some(d) = data_dir.as_deref() {
+            download::install_pending(d);
+        }
         let store = Store::open(data_dir.as_deref());
         let mut s = Sozluk {
             ix,
@@ -250,6 +266,9 @@ impl Sozluk {
             blink: None,
             counts: None,
             cache_n: 0,
+            dict: None,
+            dict_busy: false,
+            dict_installed: None,
         };
         if let Some(w) = s.prefs.last.clone() {
             s.open_word(&w, false);
@@ -286,6 +305,67 @@ impl Sozluk {
         self.store = Store::open(self.data_dir.as_deref());
         self.counts = self.store.crawl_counts();
         self.cache_n = self.store.cache_count();
+        self.dict_installed = self.data_dir.as_deref().and_then(download::installed);
+    }
+
+    /// Starts the offline dictionary's worker, unless one is running or there is no data folder.
+    fn start_dict(&mut self, cx: &mut Cx<'_, Msg>) {
+        let Some(dir) = self.data_dir.clone() else {
+            return;
+        };
+        if self.dict_busy {
+            return;
+        }
+        self.dict_busy = true;
+        self.dict = Some(download::Event::Checking);
+        let proxy = cx.proxy();
+        std::thread::spawn(move || download::run(&dir, &|e| proxy.send(Msg::Dict(e))));
+    }
+
+    /// What the offline dictionary's worker said. A checked download is put in place at once:
+    /// the database is closed, swapped and opened again.
+    fn dict_event(&mut self, cx: &mut Cx<'_, Msg>, e: download::Event) {
+        match &e {
+            download::Event::Ready(_) => {
+                self.store = Store::closed();
+                let done = self.data_dir.as_deref().map(download::install);
+                self.refresh_counts();
+                if let Some(w) = self.current.clone() {
+                    self.lookup = self.store.lookup(&w);
+                    self.page_epoch += 1;
+                }
+                self.dict_busy = false;
+                self.dict_checked_now();
+                match done {
+                    Some(Err(why)) => self.dict = Some(download::Event::Failed(why)),
+                    _ => {
+                        self.dict = Some(e);
+                        self.toast(
+                            cx,
+                            tl(
+                                "Çevrimdışı sözlük güncellendi",
+                                "Offline dictionary updated",
+                            ),
+                        );
+                    }
+                }
+                cx.request_redraw_all();
+                return;
+            }
+            download::Event::UpToDate(_) => {
+                self.dict_busy = false;
+                self.dict_checked_now();
+            }
+            download::Event::Failed(_) => self.dict_busy = false,
+            _ => {}
+        }
+        self.dict = Some(e);
+        cx.request_redraw_all();
+    }
+
+    fn dict_checked_now(&mut self) {
+        self.prefs.dict_checked = unix_now();
+        self.prefs.save();
     }
 
     /// Opens a headword. `push` keeps the one open now for Back.
@@ -728,6 +808,11 @@ impl Sozluk {
                 }
                 self.toast(cx, tl("Veritabanı yeniden okundu", "Database read again"));
             }
+            Hit::DictAuto => {
+                self.prefs.auto_dict = !self.prefs.auto_dict;
+                self.prefs.save();
+            }
+            Hit::DictCheck => self.start_dict(cx),
             Hit::Retry => {
                 self.live_blocked_until = None;
                 self.live_error = None;
@@ -922,6 +1007,12 @@ fn set_icons(cx: &mut Cx<'_, Msg>) {
     let _ = BIG;
 }
 
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
 fn spawn_live(proxy: mdshared_ui::host::Proxy<Msg>) -> Sender<String> {
     let (tx, rx) = channel::<String>();
     std::thread::spawn(move || {
@@ -957,6 +1048,14 @@ impl App for Sozluk {
             cx.timer_at("clipboard", cx.now() + Duration::from_millis(700));
         }
         self.refresh_counts();
+        // The offline dictionary: once a day, or now when there is none at all.
+        if self.prefs.auto_dict
+            && !crate::prefs::DEMO.load(std::sync::atomic::Ordering::Relaxed)
+            && (!self.store.has_crawl()
+                || unix_now().saturating_sub(self.prefs.dict_checked) >= 86_400)
+        {
+            self.start_dict(cx);
+        }
         if self.demo_switch {
             cx.timer_at("demo-switch", cx.now() + Duration::from_millis(1500));
         }
@@ -991,7 +1090,10 @@ impl App for Sozluk {
     }
 
     fn message(&mut self, cx: &mut Cx<'_, Msg>, m: Msg) {
-        let Msg::Live(w, r) = m;
+        let (w, r) = match m {
+            Msg::Live(w, r) => (w, r),
+            Msg::Dict(e) => return self.dict_event(cx, e),
+        };
         self.live_pending.remove(&w);
         match r {
             Ok(json) => {

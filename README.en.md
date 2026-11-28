@@ -64,6 +64,9 @@ sienna `#a0522d` for word types; in the dark, navy `#1a1a2e`, cards `#24243e` an
   `data/gts.sqlite`, not committed), opened read-only, so it can be read while the crawl still
   writes. Found at `$SOZLUK_DB`, next to `sozluk.exe`, or in `%LOCALAPPDATA%\sozluk`. The crawl
   can be split across machines (`--shard i/n`) and the parts joined with `--merge`.
+- Offline dictionary: Sözlük downloads the newest `gts.sqlite` from the crawl's server itself
+  (once a day from Settings, or with "Check now"). A download whose checksum or SQLite check
+  fails is not used; the file before stays as `gts.sqlite.prev`.
 - Missing entries are asked from sozluk.gov.tr, one at a time, and kept in
   `%LOCALAPPDATA%\sozluk\live-cache.sqlite`. Off with one switch on the Settings tab. A 429
   (rate limit) pauses live lookups for 90 s.

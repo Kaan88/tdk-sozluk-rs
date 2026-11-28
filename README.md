@@ -67,6 +67,9 @@ iki ton kendi ailesi içinde kaydırıldı (bkz. `src/theme.rs`).
   `data/gts.sqlite`; depoya konmaz). Salt okunur açılır, bu yüzden tarama sürerken de
   okunabilir. `$SOZLUK_DB`'de, `sozluk.exe`'nin yanında ya da `%LOCALAPPDATA%\sozluk` içinde
   aranır. Tarama birkaç makineye bölünebilir (`--shard i/n`); parçalar `--merge` ile birleşir.
+- Çevrimdışı sözlük: Sözlük, taramanın sunucusundaki en yeni `gts.sqlite` kopyasını
+  kendisi indirir (Ayarlar'da günde bir kez ya da "Şimdi denetle" ile). İndirilen dosyanın
+  sağlaması ve SQLite denetimi tutmazsa kullanılmaz; eski dosya `gts.sqlite.prev` olarak kalır.
 - Eksik maddeler sozluk.gov.tr'ye teker teker sorulur ve
   `%LOCALAPPDATA%\sozluk\live-cache.sqlite` içinde saklanır. Ayarlar sekmesindeki tek
   düğmeyle kapatılır. 429 (hız sınırı) yanıtı canlı aramaları 90 sn durdurur.

@@ -27,6 +27,10 @@ pub struct Prefs {
     pub live: bool,
     /// Check what is copied to the clipboard.
     pub watch_clipboard: bool,
+    /// Check for a newer offline dictionary once a day, and download it.
+    pub auto_dict: bool,
+    /// When the offline dictionary was last checked (seconds since 1970).
+    pub dict_checked: u64,
     pub pinned: Vec<String>,
     pub history: Vec<String>,
     /// Words the line check takes as names.
@@ -48,6 +52,8 @@ impl Default for Prefs {
             on_top: false,
             live: true,
             watch_clipboard: false,
+            auto_dict: true,
+            dict_checked: 0,
             pinned: Vec::new(),
             history: Vec::new(),
             ignore: Vec::new(),
@@ -95,6 +101,8 @@ impl Prefs {
                 "on_top" => p.on_top = v == "1",
                 "live" => p.live = v != "0",
                 "watch_clipboard" => p.watch_clipboard = v == "1",
+                "auto_dict" => p.auto_dict = v != "0",
+                "dict_checked" => p.dict_checked = v.parse().unwrap_or(0),
                 "pinned" => p.pinned = list(v),
                 "history" => p.history = list(v),
                 "ignore" => p.ignore = list(v),
@@ -125,6 +133,8 @@ impl Prefs {
         w.line("on_top", b(self.on_top));
         w.line("live", b(self.live));
         w.line("watch_clipboard", b(self.watch_clipboard));
+        w.line("auto_dict", b(self.auto_dict));
+        w.line("dict_checked", &self.dict_checked.to_string());
         w.line("pinned", &join(&self.pinned));
         w.line("history", &join(&self.history));
         w.line("ignore", &join(&self.ignore));

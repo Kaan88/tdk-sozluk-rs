@@ -17,6 +17,7 @@ use mdshared_ui::textfield::FieldColors;
 use crate::app::{Hit, Msg, Sozluk, Tab};
 use crate::check::Kind;
 use crate::dict::{Entry, Lookup};
+use crate::download::Event;
 use crate::theme::{self, Colors, Mode};
 use crate::turkish::{letters, lower};
 use crate::widgets::{self as w, RADIUS};
@@ -2046,6 +2047,109 @@ fn draw_database(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) ->
         );
     }
     y += card_h + 12.0;
+
+    // Offline dictionary: the crawl server's snapshot.
+    let card = Rect::new(x, y, wid, 128.0);
+    w::card(p, &g.c, card);
+    p.text(
+        Face::Semibold,
+        13.5,
+        card.x + 14.0,
+        card.y + 20.0,
+        tl("Çevrimdışı sözlük", "Offline dictionary"),
+        pal.text,
+        wid,
+    );
+    let mb = |n: u64| crate::lang::decimal(n as f64 / 1_048_576.0, 1);
+    let (state, warn, part) = match &s.dict {
+        Some(Event::Checking) => (tl("Denetleniyor…", "Checking…").to_string(), false, None),
+        Some(Event::Progress(n, Some(t))) => (
+            tf!(
+                "İndiriliyor: {} / {} MB",
+                "Downloading: {} of {} MB",
+                mb(*n),
+                mb(*t)
+            ),
+            false,
+            Some(*n as f32 / (*t).max(1) as f32),
+        ),
+        Some(Event::Progress(n, None)) => (
+            tf!("İndiriliyor: {} MB", "Downloading: {} MB", mb(*n)),
+            false,
+            None,
+        ),
+        Some(Event::UpToDate(snap)) => (
+            tf!("Güncel ({})", "Up to date ({})", snap.written),
+            false,
+            None,
+        ),
+        Some(Event::Ready(snap)) => (
+            tf!("Güncellendi ({})", "Updated ({})", snap.written),
+            false,
+            None,
+        ),
+        Some(Event::Failed(why)) => (tf!("Olmadı: {}", "Failed: {}", why), true, None),
+        None => match &s.dict_installed {
+            Some(snap) => (
+                tf!("Kurulu: {}", "Installed: {}", snap.written),
+                false,
+                None,
+            ),
+            None => (
+                tl("Henüz indirilmedi", "Not downloaded yet").to_string(),
+                false,
+                None,
+            ),
+        },
+    };
+    p.text(
+        Face::Ui,
+        12.5,
+        card.x + 14.0,
+        card.y + 46.0,
+        &state,
+        if warn { pal.warn } else { pal.muted },
+        card.w - 28.0,
+    );
+    if let Some(t) = part {
+        let bar = Rect::new(card.x + 14.0, card.y + 60.0, card.w - 28.0, 4.0);
+        p.rbox(bar, 2.0, pal.hover);
+        p.rbox(
+            Rect::new(bar.x, bar.y, bar.w * t.clamp(0.0, 1.0), 4.0),
+            2.0,
+            pal.accent,
+        );
+    }
+    let tr = Rect::new(card.right() - 52.0, card.y + 72.0, 38.0, 20.0);
+    w::toggle(p, g.anim, &g.c, tr, s.prefs.auto_dict, "auto-dict");
+    p.text(
+        Face::Ui,
+        13.0,
+        card.x + 14.0,
+        tr.cy(),
+        tl(
+            "Günde bir kez denetle, yenisi varsa indir",
+            "Check once a day and download a newer one",
+        ),
+        pal.text,
+        card.w - 80.0,
+    );
+    g.hit(
+        Rect::new(card.x, card.y + 66.0, card.w, 32.0),
+        Hit::DictAuto,
+    );
+    if !s.dict_busy {
+        let label = tl("Şimdi denetle", "Check now");
+        let bw = w::text_button_w(p, label);
+        g.btn(
+            p,
+            Rect::new(card.x + 14.0, card.y + 96.0, bw, 26.0),
+            label,
+            Hit::DictCheck,
+            false,
+        );
+    }
+    y += card.h + 12.0;
 
     // Headword list.
     let card = Rect::new(x, y, wid, 112.0);

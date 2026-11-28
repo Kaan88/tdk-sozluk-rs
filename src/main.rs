@@ -6,6 +6,7 @@
 mod app;
 mod check;
 mod dict;
+mod download;
 mod draw;
 mod lang;
 mod prefs;

@@ -1086,6 +1086,38 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
 
     match s.lookup.clone() {
         Lookup::Found(es) => {
+            // A copy from an old dump is never shown as TDK's current entry.
+            if let Some(date) = &s.unchecked {
+                let warn = s.live_error.is_some() || !s.prefs.live;
+                let text = if s.live_pending.contains(&cur) {
+                    tf!(
+                        "Bu madde {date} tarihli eski bir kopyadan. Güncel hâli sozluk.gov.tr'ye soruluyor…",
+                        "This entry is from an old copy dated {date}. Asking sozluk.gov.tr for the current one…"
+                    )
+                } else if !s.prefs.live {
+                    tf!(
+                        "Bu madde {date} tarihli eski bir kopyadan; TDK o günden beri değiştirmiş olabilir. sozluk.gov.tr'ye sorma kapalı (Ayarlar sekmesi).",
+                        "This entry is from an old copy dated {date}; TDK may have changed it since. Asking sozluk.gov.tr is off (Settings tab)."
+                    )
+                } else if let Some(e) = &s.live_error {
+                    tf!(
+                        "Bu madde {date} tarihli eski bir kopyadan; güncel hâli alınamadı: {e}",
+                        "This entry is from an old copy dated {date}; the current one could not be fetched: {e}"
+                    )
+                } else {
+                    tf!(
+                        "Bu madde {date} tarihli eski bir kopyadan; TDK o günden beri değiştirmiş olabilir.",
+                        "This entry is from an old copy dated {date}; TDK may have changed it since."
+                    )
+                };
+                let (ink, bg, line) = if warn {
+                    (pal.warn, g.c.warn_card, g.c.warn_line)
+                } else {
+                    (pal.accent, g.c.info_bg, g.c.info_line)
+                };
+                let glyph_ = if warn { glyph::WARN } else { glyph::GLOBE };
+                y += w::infobar(p, &g.c, x, y, wid, glyph_, ink, bg, line, &text) + 10.0;
+            }
             let many = es.len() > 1;
             for (ei, e) in es.iter().enumerate() {
                 if many {

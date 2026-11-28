@@ -252,6 +252,28 @@ pub enum Lookup {
     Missing,
 }
 
+/// Whether a crawl row's `fetched` marks a copy from an old dump, not an answer from TDK.
+fn is_unchecked(fetched: &str) -> bool {
+    fetched.starts_with("dump")
+}
+
+/// A stored answer as a lookup; `None` for a row that is neither found nor not found (an error
+/// to retry, or an answer that does not parse).
+fn answer(w: &str, got: Option<(String, Option<String>)>) -> Option<Lookup> {
+    match got? {
+        (status, Some(json)) if status == "ok" => {
+            let mut es = parse(&json)?;
+            let l = lower(w);
+            if es.iter().any(|e| lower(&e.headword) == l) {
+                es.retain(|e| lower(&e.headword) == l);
+            }
+            Some(Lookup::Found(es))
+        }
+        (status, _) if status == "notfound" => Some(Lookup::NotFound),
+        _ => None,
+    }
+}
+
 /// The crawl's database (read-only) and this app's cache (read-write).
 pub struct Store {
     crawl: Option<Connection>,
@@ -329,16 +351,20 @@ impl Store {
         self.crawl.is_some()
     }
 
-    fn in_crawl(&self, w: &str) -> Option<(String, Option<String>)> {
+    /// The crawl's row: status, answer, and when it was fetched (`dump …` for a row copied from
+    /// an old dump that the crawl has not yet checked against TDK).
+    fn in_crawl(&self, w: &str) -> Option<(String, Option<String>, String)> {
         let c = self.crawl.as_ref()?;
-        let row: Option<(String, Vec<u8>)> = c
-            .query_row("SELECT status, data FROM gts WHERE word = ?1", [w], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
+        let row: Option<(String, Vec<u8>, Option<String>)> = c
+            .query_row(
+                "SELECT status, data, fetched FROM gts WHERE word = ?1",
+                [w],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
             .optional()
             .ok()?;
-        let (status, data) = row?;
-        Some((status, inflate(&data)))
+        let (status, data, fetched) = row?;
+        Some((status, inflate(&data), fetched.unwrap_or_default()))
     }
 
     fn in_cache(&self, w: &str) -> Option<(String, Option<String>)> {
@@ -353,22 +379,29 @@ impl Store {
     /// The entries for one headword. TDK's search ignores circumflexes, so `hala` brings `hâlâ`
     /// too: only the entries spelled as asked are kept, unless none are.
     pub fn lookup(&self, w: &str) -> Lookup {
-        for got in [self.in_crawl(w), self.in_cache(w)] {
-            match got {
-                Some((status, Some(json))) if status == "ok" => {
-                    if let Some(mut es) = parse(&json) {
-                        let l = lower(w);
-                        if es.iter().any(|e| lower(&e.headword) == l) {
-                            es.retain(|e| lower(&e.headword) == l);
-                        }
-                        return Lookup::Found(es);
-                    }
-                }
-                Some((status, _)) if status == "notfound" => return Lookup::NotFound,
-                _ => {}
+        self.lookup_checked(w).0
+    }
+
+    /// [`Store::lookup`], and the date of the old dump the answer comes from when no one has
+    /// checked it against TDK yet: TDK may have changed or removed the entry since. An answer
+    /// TDK gave (the crawl's, or a live one in the cache) comes before an unchecked copy.
+    pub fn lookup_checked(&self, w: &str) -> (Lookup, Option<String>) {
+        let (fresh, copy) = match self.in_crawl(w) {
+            Some(row) if is_unchecked(&row.2) => (None, Some(row)),
+            row => (row.map(|(s, json, _)| (s, json)), None),
+        };
+        for got in [fresh, self.in_cache(w)] {
+            if let Some(l) = answer(w, got) {
+                return (l, None);
             }
         }
-        Lookup::Missing
+        if let Some((s, json, fetched)) = copy
+            && let Some(l) = answer(w, Some((s, json)))
+        {
+            let date = fetched.trim_start_matches("dump").trim().to_string();
+            return (l, Some(date));
+        }
+        (Lookup::Missing, None)
     }
 
     /// Keeps a live answer.
@@ -481,5 +514,67 @@ mod tests {
         assert_eq!(es[0].compounds, vec!["yeraltı dünyası"]);
         assert!(parse(r#"{"error":"Sonuç bulunamadı"}"#).is_none());
         assert_eq!(encode("şu an"), "%C5%9Fu%20an");
+    }
+
+    /// An entry copied from an old dump is reported as unchecked, and gives way to any answer
+    /// TDK gave: the crawl's, or a live one in the cache (found or not found).
+    #[test]
+    fn an_old_copy_is_never_taken_for_tdk() {
+        let entry = |meaning: &str| {
+            format!(r#"[{{"madde":"ören","anlamlarListe":[{{"anlam":"{meaning}"}}]}}]"#)
+        };
+        let zip = |s: &str| {
+            use std::io::Write;
+            let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+            z.write_all(s.as_bytes()).unwrap();
+            z.finish().unwrap()
+        };
+        let crawl = Connection::open_in_memory().unwrap();
+        crawl
+            .execute_batch(
+                "CREATE TABLE gts(word TEXT PRIMARY KEY, status TEXT, data BLOB, fetched TEXT)",
+            )
+            .unwrap();
+        let cache = Connection::open_in_memory().unwrap();
+        cache
+            .execute_batch(
+                "CREATE TABLE gts(word TEXT PRIMARY KEY, status TEXT, json TEXT, fetched TEXT)",
+            )
+            .unwrap();
+        let row = |w: &str, meaning: &str, fetched: &str| {
+            crawl
+                .execute(
+                    "INSERT INTO gts VALUES (?1, 'ok', ?2, ?3)",
+                    rusqlite::params![w, zip(&entry(meaning)), fetched],
+                )
+                .unwrap();
+        };
+        row("ören", "Kalıntı", "dump 2024-03-29");
+        row("örene", "Yeni", "2026-11-28 10:00:00");
+        let store = Store {
+            crawl: Some(crawl),
+            crawl_path: None,
+            cache: Some(cache),
+            cache_path: None,
+        };
+        let meaning = |l: &Lookup| match l {
+            Lookup::Found(es) => es[0].meanings[0].text.clone(),
+            Lookup::NotFound => "not found".into(),
+            Lookup::Missing => "missing".into(),
+        };
+
+        let (l, unchecked) = store.lookup_checked("ören");
+        assert_eq!(meaning(&l), "Kalıntı");
+        assert_eq!(unchecked.as_deref(), Some("2024-03-29"));
+        // A fetched row is TDK's answer, whatever its date.
+        let (_, unchecked) = store.lookup_checked("örene");
+        assert_eq!(unchecked, None);
+
+        store.remember("ören", Some(&entry("Yıkıntı")));
+        let (l, unchecked) = store.lookup_checked("ören");
+        assert_eq!((meaning(&l).as_str(), unchecked), ("Yıkıntı", None));
+        // TDK no longer having it wins over the old copy too.
+        store.remember("ören", None);
+        assert_eq!(meaning(&store.lookup("ören")), "not found");
     }
 }

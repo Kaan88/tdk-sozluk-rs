@@ -129,6 +129,8 @@ pub struct Sozluk {
 
     pub current: Option<String>,
     pub lookup: Lookup,
+    /// The date of the old dump `lookup` was copied from, while no one has checked it against TDK.
+    pub unchecked: Option<String>,
     pub back: Vec<String>,
     pub forward: Vec<String>,
     pub live_tx: Option<Sender<String>>,
@@ -236,6 +238,7 @@ impl Sozluk {
             results_for: String::new(),
             current: None,
             lookup: Lookup::Missing,
+            unchecked: None,
             back: Vec::new(),
             forward: Vec::new(),
             live_tx: None,
@@ -338,7 +341,7 @@ impl Sozluk {
                 let done = self.data_dir.as_deref().map(download::install);
                 self.refresh_counts();
                 if let Some(w) = self.current.clone() {
-                    self.lookup = self.store.lookup(&w);
+                    (self.lookup, self.unchecked) = self.store.lookup_checked(&w);
                     self.page_epoch += 1;
                 }
                 self.dict_busy = false;
@@ -387,7 +390,7 @@ impl Sozluk {
             self.forward.clear();
         }
         self.current = Some(w.to_string());
-        self.lookup = self.store.lookup(w);
+        (self.lookup, self.unchecked) = self.store.lookup_checked(w);
         self.live_error = None;
         self.prefs.visited(w);
         self.search.set_text(w);
@@ -404,7 +407,9 @@ impl Sozluk {
         let Some(w) = self.current.clone() else {
             return;
         };
-        if !matches!(self.lookup, Lookup::Missing) || !self.prefs.live {
+        // An entry copied from an old dump is asked for too: TDK may have changed it since.
+        let wanted = matches!(self.lookup, Lookup::Missing) || self.unchecked.is_some();
+        if !wanted || !self.prefs.live {
             return;
         }
         if self.live_blocked_until.is_some_and(|t| t > Instant::now()) {
@@ -813,7 +818,7 @@ impl Sozluk {
             Hit::DbRefresh => {
                 self.refresh_counts();
                 if let Some(w) = self.current.clone() {
-                    self.lookup = self.store.lookup(&w);
+                    (self.lookup, self.unchecked) = self.store.lookup_checked(&w);
                 }
                 self.toast(cx, tl("Veritabanı yeniden okundu", "Database read again"));
             }
@@ -1108,7 +1113,7 @@ impl App for Sozluk {
             Ok(json) => {
                 self.store.remember(&w, json.as_deref());
                 if self.current.as_deref() == Some(w.as_str()) {
-                    self.lookup = self.store.lookup(&w);
+                    (self.lookup, self.unchecked) = self.store.lookup_checked(&w);
                     self.page_epoch += 1;
                 }
             }

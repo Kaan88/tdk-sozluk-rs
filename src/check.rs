@@ -49,9 +49,11 @@ pub struct Token {
     pub kind: Kind,
 }
 
-/// Matches the case of `like` (a capital first letter) on `w`.
+/// Matches the case of `like` on `w`: all capitals, or a capital first letter.
 fn cased(w: &str, like: &str) -> String {
-    if is_capitalized(like) {
+    if crate::turkish::is_all_caps(like) {
+        crate::turkish::upper(w)
+    } else if is_capitalized(like) {
         capitalize(w)
     } else {
         w.to_string()
@@ -342,6 +344,14 @@ mod tests {
             fixed(text, &toks),
             "Her şey kâğıt üzerinde rengârenk görünüyordu, ama Brennan hala yeraltında. Bekarlar mı?"
         );
+    }
+
+    #[test]
+    fn a_word_in_capitals_is_fixed_in_capitals() {
+        let ix = Index::load();
+        let text = "HERŞEY KAĞIT ÜZERİNDE, Herşey kağıt";
+        let toks = check(&ix, text, &[]);
+        assert_eq!(fixed(text, &toks), "HER ŞEY KÂĞIT ÜZERİNDE, Her şey kâğıt");
     }
 
     #[test]

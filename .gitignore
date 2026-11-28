@@ -2,3 +2,5 @@
 # The crawl's database (tools/tdk-crawl.py): large, and TDK's data; not committed.
 /data/*.sqlite
 /data/*.sqlite-journal
+# tools/build-history.py: its downloads and Wayback cache.
+/data/history-src/

@@ -315,8 +315,8 @@ fn meaning_notes(entries: &[Entry], hist: &[Version]) -> Vec<Note> {
             cur.push((label.clone(), mi + 1, plain(&m.text)));
         }
     }
-    // (reworded, entry, year) → the numbers; added sorts before reworded.
-    let mut groups: BTreeMap<(bool, Option<String>, String), Vec<usize>> = BTreeMap::new();
+    // (reworded, entry, number, year) of each meaning that changed.
+    let mut changed: Vec<(bool, Option<String>, usize, String)> = Vec::new();
     for (label, n, p) in &cur {
         if p.is_empty() {
             continue;
@@ -343,10 +343,52 @@ fn meaning_notes(entries: &[Entry], hist: &[Version]) -> Vec<Note> {
                 (true, similar)
             }
         };
-        groups
-            .entry((reworded, label.clone(), year(&hist[at].last)))
-            .or_default()
-            .push(*n);
+        changed.push((reworded, label.clone(), *n, year(&hist[at].last)));
+    }
+
+    // Removed: a meaning of some form that neither today's entry nor any newer form has, not even
+    // reworded. A copy of the site's page only says nothing of what it lacks.
+    let cur_plains: Vec<String> = cur.into_iter().map(|c| c.2).collect();
+    let mut removed: Vec<Note> = Vec::new();
+    for (v, form) in hist.iter().enumerate().rev() {
+        if form.wayback_only() {
+            continue;
+        }
+        for (text, p) in form.texts.iter().zip(&form.plain) {
+            let gone = !p.is_empty()
+                && find_in(p, &cur_plains) == Match::None
+                && hist[v + 1..]
+                    .iter()
+                    .all(|w| find_in(p, &w.plain) == Match::None);
+            if gone {
+                removed.push(Note::Removed {
+                    text: quote(text),
+                    year: year(&form.last),
+                });
+            }
+        }
+    }
+
+    // One meaning rewritten shows as one added and one removed in the same step: tell it once, as
+    // reworded. The k-th added meaning pairs with the k-th removed one.
+    removed.retain(|gone| {
+        let Note::Removed { year: y, .. } = gone else {
+            return true;
+        };
+        match changed.iter_mut().find(|c| !c.0 && c.3 == *y) {
+            Some(c) => {
+                c.0 = true;
+                false
+            }
+            None => true,
+        }
+    });
+    removed.truncate(MAX_REMOVED);
+
+    // (reworded, entry, year) → the numbers; added sorts before reworded.
+    let mut groups: BTreeMap<(bool, Option<String>, String), Vec<usize>> = BTreeMap::new();
+    for (reworded, label, n, year) in changed {
+        groups.entry((reworded, label, year)).or_default().push(n);
     }
     let mut out: Vec<Note> = groups
         .into_iter()
@@ -358,30 +400,7 @@ fn meaning_notes(entries: &[Entry], hist: &[Version]) -> Vec<Note> {
             }
         })
         .collect();
-
-    // Removed: a meaning of some form that neither today's entry nor any newer form has, not even
-    // reworded. A copy of the site's page only says nothing of what it lacks.
-    let cur_plains: Vec<String> = cur.into_iter().map(|c| c.2).collect();
-    let mut removed = 0;
-    for (v, form) in hist.iter().enumerate().rev() {
-        if form.wayback_only() {
-            continue;
-        }
-        for (text, p) in form.texts.iter().zip(&form.plain) {
-            let gone = !p.is_empty()
-                && find_in(p, &cur_plains) == Match::None
-                && hist[v + 1..]
-                    .iter()
-                    .all(|w| find_in(p, &w.plain) == Match::None);
-            if gone && removed < MAX_REMOVED {
-                removed += 1;
-                out.push(Note::Removed {
-                    text: quote(text),
-                    year: year(&form.last),
-                });
-            }
-        }
-    }
+    out.extend(removed);
     out
 }
 
@@ -1005,5 +1024,46 @@ mod tests {
         // Without it, as before: the archive's newest form is 2024.
         assert_eq!(got(Some(&h), None), ["Meaning 3 was added after 2024."]);
         assert!(got(None, None).is_empty());
+    }
+
+    #[test]
+    fn a_meaning_rewritten_beyond_recognition_is_told_once() {
+        let _lang = english();
+        let then = "Uçakların kalkıp inmesi için yapılmış düz, açık ve asfaltlanmış alan";
+        let now = "İçerisindeki bina, tesis ve donatımlar dâhil uçakların iniş, kalkış ve yer hareketlerini yaparken kullanılan saha";
+        assert!(dice(&plain(then), &plain(now)) < SIMILAR);
+        let h = db(
+            &[
+                ("hava alanı", "2007", "2007", "copy 2007", &[then]),
+                ("havaalanı", "2019-06-06", "2024-03-29", "copy 2019", &[now]),
+            ],
+            &[["hava alanı", "havaalanı", "2007", "2019-06-01"]],
+        );
+        assert_eq!(
+            lines(&h, "havaalanı", &[entry("havaalanı", &[now])]),
+            [
+                "Written as two words until 2019: “hava alanı”.",
+                "Meaning 1 was reworded after 2007."
+            ]
+        );
+    }
+
+    #[test]
+    fn added_and_removed_in_one_step_pair_up_in_order() {
+        let _lang = english();
+        let h = db(
+            &[
+                ("w", "2019", "2019", "copy 2019", &[A, B]),
+                ("w", "2023", "2024", "copy 2023", &[A, C, D]),
+            ],
+            &[],
+        );
+        assert_eq!(
+            lines(&h, "w", &[entry("w", &[A, C, D])]),
+            [
+                "Meaning 3 was added after 2019.",
+                "Meaning 2 was reworded after 2019."
+            ]
+        );
     }
 }

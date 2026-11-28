@@ -20,7 +20,7 @@ use winit::window::WindowLevel;
 use crate::check::{self, Kind, Token};
 use crate::dict::{Index, Lookup, Store, fetch_live};
 use crate::download;
-use crate::history::{History, Note, OldSpelling};
+use crate::history::{self, History, Note, OldSpelling, Removed, Replaced};
 use crate::prefs::Prefs;
 use crate::theme::{Colors, Mode};
 use mdshared_app::backdrop::Backdrop;
@@ -137,6 +137,10 @@ pub struct Sozluk {
     /// What it says of the open word: the box under the entry, and the bar for an old spelling.
     pub notes: Vec<Note>,
     pub old_spelling: Option<OldSpelling>,
+    /// The entries the server saw TDK replace or remove (`replaced.sqlite`), and, for a word
+    /// TDK no longer has, its last entry.
+    pub replaced: Option<Replaced>,
+    pub removed: Option<Removed>,
     pub back: Vec<String>,
     pub forward: Vec<String>,
     pub live_tx: Option<Sender<String>>,
@@ -225,9 +229,11 @@ impl Sozluk {
         // A dictionary downloaded last time but not yet put in place goes in before it is opened.
         if let Some(d) = data_dir.as_deref() {
             download::install_pending(d);
+            download::install_replaced_pending(d);
         }
         let store = Store::open(data_dir.as_deref());
         let history = History::open(data_dir.as_deref());
+        let replaced = Replaced::open(data_dir.as_deref());
         let mut s = Sozluk {
             ix,
             store,
@@ -248,6 +254,8 @@ impl Sozluk {
             history,
             notes: Vec::new(),
             old_spelling: None,
+            replaced,
+            removed: None,
             back: Vec::new(),
             forward: Vec::new(),
             live_tx: None,
@@ -348,6 +356,7 @@ impl Sozluk {
             download::Event::Ready(_) => {
                 self.store = Store::closed();
                 let done = self.data_dir.as_deref().map(download::install);
+                self.reload_replaced();
                 self.refresh_counts();
                 if let Some(w) = self.current.clone() {
                     self.lookup = self.store.lookup(&w);
@@ -373,6 +382,10 @@ impl Sozluk {
                 return;
             }
             download::Event::UpToDate(_) => {
+                if self.reload_replaced() {
+                    self.refresh_notes();
+                    self.page_epoch += 1;
+                }
                 self.dict_busy = false;
                 self.dict_checked_now();
             }
@@ -414,20 +427,52 @@ impl Sozluk {
         self.ask_live_if_missing();
     }
 
+    /// What the page shows for the open word: TDK's entry, or, for a word TDK no longer has, the
+    /// last entry the server saw (under a notice).
+    pub fn shown(&self) -> &Lookup {
+        match (&self.lookup, &self.removed) {
+            (Lookup::NotFound, Some(r)) => &r.lookup,
+            _ => &self.lookup,
+        }
+    }
+
+    /// Puts a downloaded `replaced.sqlite` in place, closing the one open first. Whether there was one.
+    fn reload_replaced(&mut self) -> bool {
+        let Some(dir) = self.data_dir.clone() else {
+            return false;
+        };
+        if download::replaced_pending(&dir).is_none() {
+            return false;
+        }
+        self.replaced = None;
+        let _ = download::install_replaced(&dir);
+        self.replaced = Replaced::open(Some(&dir));
+        true
+    }
+
     /// Reads what the history says of the open word. Done when the lookup changes, not per frame.
     pub fn refresh_notes(&mut self) {
         self.notes.clear();
         self.old_spelling = None;
-        let (Some(h), Some(w)) = (&self.history, &self.current) else {
+        self.removed = None;
+        let Some(w) = self.current.clone() else {
             return;
         };
+        if matches!(self.lookup, Lookup::NotFound) {
+            self.removed = self.replaced.as_ref().and_then(|r| r.removed(&w));
+        }
         if !self.prefs.history_notes {
             return;
         }
         match &self.lookup {
-            Lookup::Found(es) => self.notes = h.notes(w, es),
-            Lookup::NotFound | Lookup::Missing if !self.ix.contains(w) => {
-                self.old_spelling = h.old_spelling(w, |n| self.ix.contains(n));
+            Lookup::Found(es) => {
+                self.notes = history::notes(self.history.as_ref(), self.replaced.as_ref(), &w, es);
+            }
+            Lookup::NotFound | Lookup::Missing if !self.ix.contains(&w) => {
+                self.old_spelling = self
+                    .history
+                    .as_ref()
+                    .and_then(|h| h.old_spelling(&w, |n| self.ix.contains(n)));
             }
             _ => {}
         }

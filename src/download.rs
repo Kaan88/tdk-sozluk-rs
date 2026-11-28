@@ -9,6 +9,11 @@
 //! first, because Windows does not rename a file SQLite holds open. A checked file that could not
 //! be put in place waits as `gts.sqlite.new` and [`install_pending`] puts it in place at the next
 //! start, before the database is opened.
+//!
+//! The server also publishes the entries TDK replaced or removed since the crawl began, as a
+//! second small database. It is kept as `replaced.sqlite` ("history.sqlite" is the archive built
+//! by `tools/build-history.py`), fetched after the main dictionary and in the same worker, and
+//! whatever goes wrong with it never fails or holds up the main dictionary.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -16,7 +21,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-/// The crawl's server (through a Cloudflare tunnel): `status.json` and `gts.sqlite.gz`.
+/// The crawl's server (through a Cloudflare tunnel): `status.json`, `gts.sqlite.gz` and
+/// `history.sqlite.gz`.
 pub const BASE: &str = "https://sozluk.kweb.ovh";
 /// The most an unpacked snapshot may be: a broken or hostile file stops here, not at a full disk.
 const MAX_UNPACKED: u64 = 1 << 30;
@@ -54,6 +60,19 @@ pub fn parse_status(json: &str) -> Option<Snapshot> {
     }
     let written = v.get("written")?.as_str()?.to_string();
     Some(Snapshot { written, sha256 })
+}
+
+/// The checksum of the replaced-entries database in a `status.json` (its `history.sha256`, of the
+/// unpacked file). Older servers have none.
+pub fn parse_replaced_status(json: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(json).ok()?;
+    let sha256 = v
+        .get("history")?
+        .get("sha256")?
+        .as_str()?
+        .trim()
+        .to_ascii_lowercase();
+    (sha256.len() == 64 && sha256.bytes().all(|b| b.is_ascii_hexdigit())).then_some(sha256)
 }
 
 fn record(snap: &Snapshot) -> String {
@@ -127,15 +146,18 @@ fn status_of(e: ureq::Error) -> String {
     }
 }
 
-/// Asks the server for its newest snapshot (blocking).
-pub fn remote() -> Result<Snapshot, String> {
+/// Asks the server for its newest snapshot, and the checksum of its replaced-entries database
+/// when it has one (blocking).
+fn remote() -> Result<(Snapshot, Option<String>), String> {
     let body = agent()
         .get(&format!("{BASE}/status.json"))
         .call()
         .map_err(status_of)?
         .into_string()
         .map_err(|e| e.to_string())?;
-    parse_status(&body).ok_or_else(|| "the server's status is not readable".to_string())
+    let snap =
+        parse_status(&body).ok_or_else(|| "the server's status is not readable".to_string())?;
+    Ok((snap, parse_replaced_status(&body)))
 }
 
 /// Counts the bytes read through it.
@@ -224,7 +246,16 @@ pub fn run(dir: &Path, send: &dyn Fn(Event) -> bool) {
 }
 
 fn fetch(dir: &Path, send: &dyn Fn(Event) -> bool) -> Result<Event, String> {
-    let snap = remote()?;
+    let (snap, replaced) = remote()?;
+    let event = fetch_main(dir, send, snap)?;
+    if let Some(sha256) = replaced {
+        // Whatever goes wrong here, the dictionary is as good as it was.
+        let _ = fetch_replaced(dir, &sha256);
+    }
+    Ok(event)
+}
+
+fn fetch_main(dir: &Path, send: &dyn Fn(Event) -> bool, snap: Snapshot) -> Result<Event, String> {
     if installed(dir).as_ref() == Some(&snap) {
         return Ok(Event::UpToDate(snap));
     }
@@ -253,6 +284,113 @@ fn fetch(dir: &Path, send: &dyn Fn(Event) -> bool) -> Result<Event, String> {
     let bytes = unpack(counting, &snap.sha256, MAX_UNPACKED)?;
     keep(dir, &bytes, &snap)?;
     Ok(Event::Ready(snap))
+}
+
+// ---- the replaced entries ---------------------------------------------------------------------
+
+const REPLACED_DB: &str = "replaced.sqlite";
+
+fn replaced_record(sha256: &str) -> String {
+    serde_json::json!({ "sha256": sha256 }).to_string()
+}
+
+fn read_replaced_record(path: &Path) -> Option<String> {
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    v.get("sha256")?.as_str().map(str::to_string)
+}
+
+/// The checksum of the `replaced.sqlite` in place, as recorded when it was installed.
+pub fn replaced_installed(dir: &Path) -> Option<String> {
+    dir.join(REPLACED_DB)
+        .is_file()
+        .then(|| read_replaced_record(&dir.join("replaced-snapshot.json")))?
+}
+
+/// The checksum of a checked `replaced.sqlite.new` waiting to be put in place.
+pub fn replaced_pending(dir: &Path) -> Option<String> {
+    dir.join("replaced.sqlite.new")
+        .is_file()
+        .then(|| read_replaced_record(&dir.join("replaced.sqlite.new.json")))?
+}
+
+/// Whether the file at `path` is a replaced-entries database SQLite can read.
+pub fn check_replaced(path: &Path) -> Result<(), String> {
+    use rusqlite::{Connection, OpenFlags};
+    let c = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| e.to_string())?;
+    let ok: String = c
+        .query_row("PRAGMA quick_check", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    if ok != "ok" {
+        return Err(format!("the database is damaged ({ok})"));
+    }
+    c.query_row(
+        "SELECT COUNT(*) FROM (SELECT word, data, fetched, replaced, now FROM replaced LIMIT 1)",
+        [],
+        |r| r.get::<_, i64>(0),
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
+/// Keeps `bytes` (the unpacked replaced-entries database) as `replaced.sqlite.new`, if it is one.
+pub fn keep_replaced(dir: &Path, bytes: &[u8], sha256: &str) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let part = dir.join("replaced.sqlite.download");
+    std::fs::write(&part, bytes).map_err(|e| e.to_string())?;
+    if let Err(e) = check_replaced(&part) {
+        let _ = std::fs::remove_file(&part);
+        return Err(e);
+    }
+    std::fs::rename(&part, dir.join("replaced.sqlite.new")).map_err(|e| e.to_string())?;
+    std::fs::write(
+        dir.join("replaced.sqlite.new.json"),
+        replaced_record(sha256),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Puts the waiting `replaced.sqlite.new` in place. Nothing may hold `replaced.sqlite` open.
+pub fn install_replaced(dir: &Path) -> Result<String, String> {
+    let sha256 = replaced_pending(dir).ok_or("no replaced entries are waiting")?;
+    let (db, new, prev) = (
+        dir.join(REPLACED_DB),
+        dir.join("replaced.sqlite.new"),
+        dir.join("replaced.sqlite.prev"),
+    );
+    if db.exists() {
+        std::fs::rename(&db, &prev).map_err(|e| e.to_string())?;
+    }
+    if let Err(e) = std::fs::rename(&new, &db) {
+        if prev.exists() && !db.exists() {
+            let _ = std::fs::rename(&prev, &db);
+        }
+        return Err(e.to_string());
+    }
+    let _ = std::fs::remove_file(&prev);
+    let _ = std::fs::write(dir.join("replaced-snapshot.json"), replaced_record(&sha256));
+    let _ = std::fs::remove_file(dir.join("replaced.sqlite.new.json"));
+    Ok(sha256)
+}
+
+/// [`install_replaced`] for a file left waiting; call before opening the database.
+pub fn install_replaced_pending(dir: &Path) -> Option<String> {
+    replaced_pending(dir).and_then(|_| install_replaced(dir).ok())
+}
+
+/// Downloads the replaced entries unless they are the ones in place (or waiting).
+fn fetch_replaced(dir: &Path, sha256: &str) -> Result<(), String> {
+    if replaced_installed(dir).as_deref() == Some(sha256)
+        || replaced_pending(dir).as_deref() == Some(sha256)
+    {
+        return Ok(());
+    }
+    let resp = agent()
+        .get(&format!("{BASE}/history.sqlite.gz"))
+        .call()
+        .map_err(status_of)?;
+    let bytes = unpack(resp.into_reader(), sha256, MAX_UNPACKED)?;
+    keep_replaced(dir, &bytes, sha256)
 }
 
 #[cfg(test)]
@@ -386,6 +524,84 @@ mod tests {
         );
         assert_eq!(pending(&d), None);
         assert!(!d.join("gts.sqlite.new").exists() && !d.join("gts.sqlite.download").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn replaced_db(path: &Path, rows: usize) -> Vec<u8> {
+        let c = rusqlite::Connection::open(path).unwrap();
+        c.execute_batch(
+            "CREATE TABLE replaced(word TEXT, data BLOB, fetched TEXT, replaced TEXT, now TEXT,
+                                   PRIMARY KEY(word, fetched))",
+        )
+        .unwrap();
+        for i in 0..rows {
+            c.execute(
+                "INSERT INTO replaced VALUES (?1, x'00', 'dump 2024-03-29', '2026-12-01', 'ok')",
+                [format!("w{i}")],
+            )
+            .unwrap();
+        }
+        drop(c);
+        std::fs::read(path).unwrap()
+    }
+
+    #[test]
+    fn the_status_names_the_replaced_entries_when_the_server_has_them() {
+        let sha = "ab".repeat(32);
+        let with = format!(
+            r#"{{"written":"x","history":{{"sha256":"{}","entries":6}}}}"#,
+            sha.to_uppercase()
+        );
+        assert_eq!(parse_replaced_status(&with), Some(sha));
+        for none in [
+            r#"{"written":"x"}"#,
+            r#"{"history":{"entries":6}}"#,
+            r#"{"history":{"sha256":"abc"}}"#,
+            r#"{"history":"x"}"#,
+            "",
+        ] {
+            assert_eq!(parse_replaced_status(none), None, "{none}");
+        }
+    }
+
+    #[test]
+    fn kept_replaced_entries_are_checked_and_put_in_place_beside_the_dictionary() {
+        let d = temp("replaced");
+        let first = replaced_db(&d.join("first.sqlite"), 2);
+        let second = replaced_db(&d.join("second.sqlite"), 3);
+        let main = crawl_db(&d.join("gts.sqlite"), &["ev"]);
+
+        assert_eq!(replaced_installed(&d), None);
+        keep_replaced(&d, &first, &sha(&first)).unwrap();
+        assert_eq!(replaced_pending(&d), Some(sha(&first)));
+        assert_eq!(install_replaced(&d), Ok(sha(&first)));
+        assert_eq!(replaced_installed(&d), Some(sha(&first)));
+        assert_eq!(replaced_pending(&d), None);
+
+        keep_replaced(&d, &second, &sha(&second)).unwrap();
+        assert_eq!(install_replaced(&d), Ok(sha(&second)));
+        assert_eq!(std::fs::read(d.join("replaced.sqlite")).unwrap(), second);
+        assert!(!d.join("replaced.sqlite.prev").exists());
+        assert_eq!(replaced_installed(&d), Some(sha(&second)));
+        assert!(install_replaced(&d).is_err());
+        // The dictionary is not touched.
+        assert_eq!(std::fs::read(d.join("gts.sqlite")).unwrap(), main);
+        assert_eq!(installed(&d), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_file_that_is_not_a_replaced_database_is_not_kept() {
+        let d = temp("replaced-reject");
+        let junk = b"not a database at all".to_vec();
+        assert!(keep_replaced(&d, &junk, &sha(&junk)).is_err());
+        // A crawl database is a database, but not this one.
+        let other = crawl_db(&d.join("other.sqlite"), &["ev"]);
+        assert!(keep_replaced(&d, &other, &sha(&other)).is_err());
+        assert_eq!(replaced_pending(&d), None);
+        assert!(
+            !d.join("replaced.sqlite.new").exists() && !d.join("replaced.sqlite.download").exists()
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 

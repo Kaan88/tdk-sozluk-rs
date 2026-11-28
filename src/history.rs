@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OpenFlags};
 
-use crate::dict::Entry;
+use crate::dict::{Entry, Lookup, inflate, parse};
 use crate::lang::{en, tl};
 use crate::tf;
 use crate::turkish::{lower, year_ablative, year_dative};
@@ -50,6 +50,16 @@ struct Version {
 }
 
 impl Version {
+    fn new(last: String, sources: String, texts: Vec<String>) -> Version {
+        let plain = texts.iter().map(|t| plain(t)).collect();
+        Version {
+            last,
+            sources,
+            texts,
+            plain,
+        }
+    }
+
     /// A copy of the site's page only can miss homographs, so what it lacks proves nothing.
     fn wayback_only(&self) -> bool {
         self.sources.split(',').all(|s| s.trim() == "Wayback")
@@ -433,14 +443,11 @@ impl History {
         };
         rows.flatten()
             .map(|(last, sources, meanings)| {
-                let texts: Vec<String> = serde_json::from_str(&meanings).unwrap_or_default();
-                let plain = texts.iter().map(|t| plain(t)).collect();
-                Version {
+                Version::new(
                     last,
                     sources,
-                    texts,
-                    plain,
-                }
+                    serde_json::from_str(&meanings).unwrap_or_default(),
+                )
             })
             .collect()
     }
@@ -456,51 +463,6 @@ impl History {
         st.query_map([word], |r| Ok((r.get(0)?, r.get(1)?)))
             .map(|rows| rows.flatten().collect())
             .unwrap_or_default()
-    }
-
-    /// The notes for the entries open under `word`: at most four lines, the last one counting what
-    /// did not fit.
-    pub fn notes(&self, word: &str, entries: &[Entry]) -> Vec<Note> {
-        let mut names = vec![word.to_string()];
-        for e in entries {
-            if !names.contains(&e.headword) {
-                names.push(e.headword.clone());
-            }
-        }
-        let mut out = Vec::new();
-        let mut olds: Vec<String> = Vec::new();
-        for n in &names {
-            for (old, first_new) in self.spelled_before(n) {
-                if olds.contains(&old) {
-                    continue;
-                }
-                let how = match (old.contains(' '), n.contains(' ')) {
-                    (true, false) => Respelt::Apart,
-                    (false, true) => Respelt::Together,
-                    _ => Respelt::Other,
-                };
-                out.push(Note::Spelling {
-                    how,
-                    old: old.clone(),
-                    year: year(&first_new),
-                });
-                olds.push(old);
-            }
-        }
-        // The old spellings' forms count as the word's own.
-        let mut hist: Vec<Version> = names
-            .iter()
-            .chain(&olds)
-            .flat_map(|n| self.versions(n))
-            .collect();
-        hist.sort_by(|a, b| a.last.cmp(&b.last));
-        out.extend(meaning_notes(entries, &hist));
-        if out.len() > MAX_NOTES {
-            let more = out.len() - (MAX_NOTES - 1);
-            out.truncate(MAX_NOTES - 1);
-            out.push(Note::More(more));
-        }
-        out
     }
 
     /// For a word TDK does not have: the spelling that replaced it, if that is a headword.
@@ -530,6 +492,156 @@ impl History {
                 new,
                 year: year(&first_new),
             })
+    }
+}
+
+/// The notes for the entries open under `word`: at most four lines, the last one counting what
+/// did not fit. `history` is the archive, `replaced` the newer entries the server keeps.
+pub fn notes(
+    history: Option<&History>,
+    replaced: Option<&Replaced>,
+    word: &str,
+    entries: &[Entry],
+) -> Vec<Note> {
+    let mut names = vec![word.to_string()];
+    for e in entries {
+        if !names.contains(&e.headword) {
+            names.push(e.headword.clone());
+        }
+    }
+    let mut out = Vec::new();
+    let mut olds: Vec<String> = Vec::new();
+    for n in &names {
+        for (old, first_new) in history.map_or_else(Vec::new, |h| h.spelled_before(n)) {
+            if olds.contains(&old) {
+                continue;
+            }
+            let how = match (old.contains(' '), n.contains(' ')) {
+                (true, false) => Respelt::Apart,
+                (false, true) => Respelt::Together,
+                _ => Respelt::Other,
+            };
+            out.push(Note::Spelling {
+                how,
+                old: old.clone(),
+                year: year(&first_new),
+            });
+            olds.push(old);
+        }
+    }
+    // The old spellings' forms count as the word's own.
+    let mut hist: Vec<Version> = Vec::new();
+    for n in names.iter().chain(&olds) {
+        hist.extend(history.map_or_else(Vec::new, |h| h.versions(n)));
+        hist.extend(replaced.map_or_else(Vec::new, |r| r.versions(n)));
+    }
+    hist.sort_by(|a, b| a.last.cmp(&b.last));
+    out.extend(meaning_notes(entries, &hist));
+    if out.len() > MAX_NOTES {
+        let more = out.len() - (MAX_NOTES - 1);
+        out.truncate(MAX_NOTES - 1);
+        out.push(Note::More(more));
+    }
+    out
+}
+
+/// The entries the server saw TDK replace or remove, as `replaced.sqlite` (read-only).
+pub struct Replaced {
+    conn: Connection,
+}
+
+/// An entry TDK no longer has, as it was last seen.
+#[derive(Clone, Debug)]
+pub struct Removed {
+    /// `Lookup::Found` of the old entries, so the page draws them like current ones.
+    pub lookup: Lookup,
+    pub fetched: String,
+    pub replaced: String,
+}
+
+/// A date as shown: `dump 2024-03-29` and `2026-12-01 04:35:54` both become the day.
+fn day(s: &str) -> String {
+    s.trim()
+        .trim_start_matches("dump")
+        .trim()
+        .chars()
+        .take(10)
+        .collect()
+}
+
+impl Removed {
+    pub fn notice(&self) -> String {
+        tf!(
+            "TDK'de artık yok. Son görülme: {}; kaldırılma: {}.",
+            "TDK no longer has this entry. Last seen: {}; removed: {}.",
+            day(&self.fetched),
+            day(&self.replaced)
+        )
+    }
+}
+
+impl Replaced {
+    pub fn open(data_dir: Option<&Path>) -> Option<Replaced> {
+        let path = data_dir?.join("replaced.sqlite");
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .ok()?;
+        Replaced::check(conn)
+    }
+
+    fn check(conn: Connection) -> Option<Replaced> {
+        conn.prepare("SELECT data, fetched, replaced, now FROM replaced WHERE word = ''")
+            .ok()?;
+        Some(Replaced { conn })
+    }
+
+    /// (old answer, fetched, replaced, now) of the rows for `word`, newest replacement first: the
+    /// word as stored, then in Turkish lower case.
+    fn rows(&self, word: &str) -> Vec<(Vec<u8>, String, String, String)> {
+        let Ok(mut st) = self.conn.prepare(
+            "SELECT data, fetched, replaced, now FROM replaced
+             WHERE word = ?1 OR word = ?2 ORDER BY replaced DESC",
+        ) else {
+            return Vec::new();
+        };
+        st.query_map([word, lower(word).as_str()], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .map(|rows| rows.flatten().collect())
+        .unwrap_or_default()
+    }
+
+    /// The entries of the rows where the entry changed, as forms it had: seen last when TDK
+    /// gave that answer (`fetched`), so a meaning that differs from it was changed after then.
+    fn versions(&self, word: &str) -> Vec<Version> {
+        self.rows(word)
+            .into_iter()
+            .filter(|(_, _, _, now)| now == "ok")
+            .filter_map(|(data, fetched, _, _)| {
+                let es = parse(&inflate(&data)?)?;
+                let texts = es
+                    .iter()
+                    .flat_map(|e| e.meanings.iter().map(|m| m.text.clone()))
+                    .collect();
+                Some(Version::new(day(&fetched), "replaced".into(), texts))
+            })
+            .collect()
+    }
+
+    /// For a word TDK no longer has: its last entry.
+    pub fn removed(&self, word: &str) -> Option<Removed> {
+        let (data, fetched, replaced, _) = self
+            .rows(word)
+            .into_iter()
+            .find(|(_, _, _, now)| now == "notfound")?;
+        let entries = parse(&inflate(&data)?)?;
+        Some(Removed {
+            lookup: Lookup::Found(entries),
+            fetched,
+            replaced,
+        })
     }
 }
 
@@ -601,7 +713,10 @@ mod tests {
     }
 
     fn lines(h: &History, word: &str, es: &[Entry]) -> Vec<String> {
-        h.notes(word, es).iter().map(Note::text).collect()
+        notes(Some(h), None, word, es)
+            .iter()
+            .map(Note::text)
+            .collect()
     }
 
     const A: &str = "Yunan alfabesinin birinci harfi";
@@ -631,7 +746,10 @@ mod tests {
             ["Meanings 3 and 4 were added after 2019."]
         );
         lang::set(Lang::Tr);
-        let tr: Vec<String> = h.notes("alfa", &es).iter().map(Note::text).collect();
+        let tr: Vec<String> = notes(Some(&h), None, "alfa", &es)
+            .iter()
+            .map(Note::text)
+            .collect();
         assert_eq!(tr, ["3. ve 4. anlamlar 2019'dan sonra eklendi."]);
         lang::set(Lang::En);
         let es = [entry("alfa", &[A, B, C])];
@@ -676,7 +794,7 @@ mod tests {
         );
         lang::set(Lang::Tr);
         assert!(
-            h.notes("zira", &es)[0]
+            notes(Some(&h), None, "zira", &es)[0]
                 .text()
                 .starts_with("2007'den sonra bir anlam")
         );
@@ -716,7 +834,7 @@ mod tests {
         );
         lang::set(Lang::Tr);
         assert_eq!(
-            h.notes("havaalanı", &es)[0].text(),
+            notes(Some(&h), None, "havaalanı", &es)[0].text(),
             "2019'a kadar ayrı yazılıyordu: “hava alanı”."
         );
         let h = db(
@@ -810,5 +928,82 @@ mod tests {
         assert!(dice("yakmayacak sıcak", "yakmayacak sıcak") > 0.99);
         assert!(dice("kuzey afrika", "helyum atomu") < SIMILAR);
         assert_eq!(dice("a", "b"), 0.0);
+    }
+
+    fn replaced_db(rows: &[(&str, &str, &str, &str, &[&str])]) -> Replaced {
+        use std::io::Write;
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE replaced(word TEXT, data BLOB, fetched TEXT, replaced TEXT, now TEXT,
+                                   PRIMARY KEY(word, fetched))",
+        )
+        .unwrap();
+        for (word, fetched, replaced, now, meanings) in rows {
+            let ms: Vec<serde_json::Value> = meanings
+                .iter()
+                .map(|m| serde_json::json!({ "anlam": m }))
+                .collect();
+            let json = serde_json::json!([{ "madde": word, "anlamlarListe": ms }]).to_string();
+            let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+            z.write_all(json.as_bytes()).unwrap();
+            c.execute(
+                "INSERT INTO replaced VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![word, z.finish().unwrap(), fetched, replaced, now],
+            )
+            .unwrap();
+        }
+        Replaced::check(c).unwrap()
+    }
+
+    #[test]
+    fn an_entry_tdk_removed_is_shown_with_its_dates() {
+        let _lang = english();
+        let r = replaced_db(&[
+            (
+                "eskisöz",
+                "dump 2024-03-29",
+                "2026-12-01 03:00:00",
+                "notfound",
+                &[A],
+            ),
+            ("eskisöz", "dump 2023-07-23", "2024-01-01", "notfound", &[B]),
+            ("kitap", "dump 2024-03-29", "2026-12-01", "ok", &[B]),
+        ]);
+        let got = r.removed("Eskisöz").expect("found in lower case");
+        assert_eq!(
+            got.notice(),
+            "TDK no longer has this entry. Last seen: 2024-03-29; removed: 2026-12-01."
+        );
+        let Lookup::Found(es) = &got.lookup else {
+            panic!("the old entry is shown as an entry");
+        };
+        assert_eq!(es[0].meanings[0].text, A);
+        lang::set(Lang::Tr);
+        assert_eq!(
+            got.notice(),
+            "TDK'de artık yok. Son görülme: 2024-03-29; kaldırılma: 2026-12-01."
+        );
+        // A row where the entry only changed is no removal.
+        assert!(r.removed("kitap").is_none());
+        assert!(r.removed("yok").is_none());
+    }
+
+    #[test]
+    fn a_replaced_entry_is_the_newest_form_the_notes_compare_with() {
+        let _lang = english();
+        let r = replaced_db(&[("alfa", "2026-11-28 04:00:00", "2026-12-01", "ok", &[A, B])]);
+        let h = db(
+            &[("alfa", "2019", "2024-03-29", "copy 2019,copy 2024", &[A, B])],
+            &[],
+        );
+        let es = [entry("alfa", &[A, B, C])];
+        let got = |h: Option<&History>, r: Option<&Replaced>| -> Vec<String> {
+            notes(h, r, "alfa", &es).iter().map(Note::text).collect()
+        };
+        assert_eq!(got(Some(&h), Some(&r)), ["Meaning 3 was added after 2026."]);
+        assert_eq!(got(None, Some(&r)), ["Meaning 3 was added after 2026."]);
+        // Without it, as before: the archive's newest form is 2024.
+        assert_eq!(got(Some(&h), None), ["Meaning 3 was added after 2024."]);
+        assert!(got(None, None).is_empty());
     }
 }

@@ -609,7 +609,7 @@ fn draw_lookup(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect, full
     let area = Rect::new(page.x + 16.0, page.y + 16.0, page.w - 32.0, page.h);
     let mut h = draw_entry(s, g, p, area, false);
     if let Some(cur) = s.current.clone()
-        && let Lookup::Found(es) = &s.lookup
+        && let Lookup::Found(es) = s.shown()
     {
         let syn = synonyms(s, es);
         if !syn.is_empty() {
@@ -826,8 +826,8 @@ fn draw_side_tools(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect) 
     );
     let mut y = area.y + 30.0;
     let Some(cur) = s.current.clone() else { return };
-    let found = matches!(s.lookup, Lookup::Found(_));
-    let syn = match &s.lookup {
+    let found = matches!(s.shown(), Lookup::Found(_));
+    let syn = match s.shown() {
         Lookup::Found(es) => synonyms(s, es),
         _ => Vec::new(),
     };
@@ -970,7 +970,7 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
         pal.text,
         wid - 90.0,
     );
-    let pron = match &s.lookup {
+    let pron = match s.shown() {
         Lookup::Found(es) => es
             .first()
             .map(|e| e.pronunciation.clone())
@@ -997,7 +997,7 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
 
     // Meta: word types, meanings, letters.
     let mut meta: Vec<String> = Vec::new();
-    if let Lookup::Found(es) = &s.lookup {
+    if let Lookup::Found(es) = s.shown() {
         let mut tags: Vec<String> = Vec::new();
         for e in es {
             for m in &e.meanings {
@@ -1035,6 +1035,22 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
         wid,
     );
     y += 26.0;
+
+    // An entry TDK no longer has is shown as it was, under this notice.
+    if let Some(r) = &s.removed {
+        y += w::infobar(
+            p,
+            &g.c,
+            x,
+            y,
+            wid,
+            glyph::WARN,
+            pal.warn,
+            g.c.warn_card,
+            g.c.warn_line,
+            &r.notice(),
+        ) + 14.0;
+    }
 
     // Other spellings, as an InfoBar (compact; the full window has them in the side pane).
     let vars: Vec<String> =
@@ -1113,7 +1129,7 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
         y += h + 10.0;
     }
 
-    match s.lookup.clone() {
+    match s.shown().clone() {
         Lookup::Found(es) => {
             let many = es.len() > 1;
             for (ei, e) in es.iter().enumerate() {

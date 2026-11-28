@@ -260,7 +260,7 @@ pub struct Store {
     pub cache_path: Option<PathBuf>,
 }
 
-fn inflate(blob: &[u8]) -> Option<String> {
+pub(crate) fn inflate(blob: &[u8]) -> Option<String> {
     let mut out = String::new();
     flate2::read::ZlibDecoder::new(blob)
         .read_to_string(&mut out)

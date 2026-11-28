@@ -91,13 +91,13 @@ pub fn classify(ix: &Index, word: &str, ignore: &[String]) -> Kind {
             && let Some(o) = ix.variants(&l).first()
         {
             return Kind::Pair {
-                other: o.to_string(),
+                other: cased(o, word),
             };
         }
         // Joined and apart both exist (yeraltı / yer altı).
         if let Some(o) = ix.variants(&l).into_iter().find(|v| v.contains(' ')) {
             return Kind::Pair {
-                other: o.to_string(),
+                other: cased(o, word),
             };
         }
         return Kind::Ok(None);
@@ -352,6 +352,16 @@ mod tests {
         let text = "HERŞEY KAĞIT ÜZERİNDE, Herşey kağıt";
         let toks = check(&ix, text, &[]);
         assert_eq!(fixed(text, &toks), "HER ŞEY KÂĞIT ÜZERİNDE, Her şey kâğıt");
+        // A pair offers the other word in the case it was typed in.
+        for (typed, other) in [("hala", "hâlâ"), ("Hala", "Hâlâ"), ("HALA", "HÂLÂ")] {
+            assert_eq!(
+                classify(&ix, typed, &[]),
+                Kind::Pair {
+                    other: other.into()
+                },
+                "{typed}"
+            );
+        }
     }
 
     #[test]

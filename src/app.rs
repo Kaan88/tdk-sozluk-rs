@@ -190,8 +190,9 @@ pub enum Field {
 }
 
 const FIELD_SCROLL: &str = "field-scroll";
-/// The largest file a drop is checked from: a subtitle is a few hundred kilobytes, a film is not.
-const MAX_DROPPED: u64 = 8 << 20;
+/// The largest file a drop is checked from: a film's subtitles are about 100 KB (twice that in
+/// UTF-16); a film, or a text so long the check page would crawl, is not read.
+const MAX_DROPPED: u64 = 1 << 20;
 
 /// A press in a field's box but outside its text (the magnifier, the padding) moved to the
 /// nearest end of the text, so it still places the caret there.

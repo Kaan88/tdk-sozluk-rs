@@ -314,6 +314,17 @@ impl Store {
         }
     }
 
+    /// A store with nothing open: what the app holds while it replaces `gts.sqlite`, which
+    /// Windows does not let it rename while a connection has it open.
+    pub fn closed() -> Store {
+        Store {
+            crawl: None,
+            crawl_path: None,
+            cache: None,
+            cache_path: None,
+        }
+    }
+
     pub fn has_crawl(&self) -> bool {
         self.crawl.is_some()
     }

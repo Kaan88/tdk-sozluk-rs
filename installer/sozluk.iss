@@ -1,9 +1,9 @@
 ﻿; Inno Setup script for Sözlük. Per user, no elevation, like Hub's other apps.
-; Build: ISCC.exe /DAppVersion=0.4.0 installer\sozluk.iss  (tools\build-installer.ps1 builds the exe first)
+; Build: ISCC.exe /DAppVersion=0.5.0 installer\sozluk.iss  (tools\build-installer.ps1 builds the exe first)
 ; The AppId below is the uninstall key {4FB1F2BC-2BEF-4862-B431-0EE595F96973}_is1 that Hub's catalog names. Never change it.
 
 #ifndef AppVersion
-  #define AppVersion "0.4.0"
+  #define AppVersion "0.5.0"
 #endif
 #define Dash Pos("-", AppVersion)
 #if Dash > 0

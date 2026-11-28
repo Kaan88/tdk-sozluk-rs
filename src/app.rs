@@ -571,10 +571,17 @@ impl Sozluk {
         if b != Backdrop::Off && !platform::backdrop_available() {
             self.toast(
                 cx,
-                tl(
-                    "Bu Windows'ta Mica ve Akrilik yok",
-                    "This Windows has no Mica or Acrylic",
-                ),
+                if cfg!(windows) {
+                    tl(
+                        "Bu Windows'ta Mica ve Akrilik yok",
+                        "This Windows has no Mica or Acrylic",
+                    )
+                } else {
+                    tl(
+                        "Mica ve Akrilik yalnızca Windows 11'de var",
+                        "Mica and Acrylic are Windows 11 only",
+                    )
+                },
             );
         }
     }

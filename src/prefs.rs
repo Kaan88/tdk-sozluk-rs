@@ -1,4 +1,5 @@
-//! What the app keeps between runs, in `%LOCALAPPDATA%\sozluk\settings.ini`.
+//! What the app keeps between runs, in `settings.ini` in the app's data folder
+//! (`mdshared_app::settings::data_dir`; `%LOCALAPPDATA%\sozluk` on Windows).
 
 use std::path::PathBuf;
 

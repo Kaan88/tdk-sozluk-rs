@@ -11,6 +11,7 @@ use mdshared_ui::chrome::{self, WinButton};
 use mdshared_ui::gfx::{Face, Painter, Rect, mix};
 use mdshared_ui::glyph;
 use mdshared_ui::host::Cx;
+use mdshared_ui::keys::label;
 use mdshared_ui::overlay::Bubble;
 use mdshared_ui::textfield::FieldColors;
 
@@ -354,7 +355,7 @@ pub fn frame(s: &mut Sozluk, cx: &mut Cx<'_, Msg>, p: &mut Painter) {
         Face::Ui,
         14.0,
         &colors,
-        tl("TDK'de ara  (Ctrl+K)", "Search TDK  (Ctrl+K)"),
+        &tf!("TDK'de ara  ({})", "Search TDK  ({})", label("Ctrl+K")),
         s.search_focus && focused,
     );
     s.search_stops = p.caret_stops(Face::Ui, 14.0, &s.search.display());
@@ -468,28 +469,33 @@ pub fn frame(s: &mut Sozluk, cx: &mut Cx<'_, Msg>, p: &mut Painter) {
     );
     p.text(Face::Ui, 12.0, 26.0, st.cy(), &text, pal.muted, ww * 0.6);
     let hint = match s.tab {
-        Tab::Lookup => tl(
-            "Ctrl+D sabitle · Ctrl+Shift+C kopyala",
-            "Ctrl+D pin · Ctrl+Shift+C copy",
+        Tab::Lookup => tf!(
+            "{} sabitle · {} kopyala",
+            "{} pin · {} copy",
+            label("Ctrl+D"),
+            label("Ctrl+Shift+C")
         ),
-        Tab::Check => tl(
-            "Ctrl+Enter tümünü düzelt · .srt bırakın",
-            "Ctrl+Enter fix all · drop an .srt",
+        Tab::Check => tf!(
+            "{} tümünü düzelt · .srt bırakın",
+            "{} fix all · drop an .srt",
+            label("Ctrl+Enter")
         ),
-        Tab::Pinned => tl("Ctrl+1–4 sekme değiştir", "Ctrl+1–4 switch tabs"),
-        Tab::Database => tl(
-            "Ctrl+T tema · Ctrl+B arka plan",
-            "Ctrl+T theme · Ctrl+B backdrop",
+        Tab::Pinned => tf!("{}–4 sekme değiştir", "{}–4 switch tabs", label("Ctrl+1")),
+        Tab::Database => tf!(
+            "{} tema · {} arka plan",
+            "{} theme · {} backdrop",
+            label("Ctrl+T"),
+            label("Ctrl+B")
         ),
     };
-    let hw = p.measure(Face::Ui, 12.0, hint);
+    let hw = p.measure(Face::Ui, 12.0, &hint);
     if hw < ww * 0.45 {
         p.text(
             Face::Ui,
             12.0,
             ww - hw - 12.0,
             st.cy(),
-            hint,
+            &hint,
             pal.muted,
             f32::INFINITY,
         );
@@ -515,6 +521,26 @@ pub fn frame(s: &mut Sozluk, cx: &mut Cx<'_, Msg>, p: &mut Painter) {
     // The colours of this frame are what the chrome was drawn in: the backdrop takes out that
     // flat colour, so it follows the theme while it glides.
     cx.set_backdrop(s.prefs.backdrop, &pal);
+}
+
+/// Where the crawl's file may be put, as this platform names the places.
+fn no_db_text() -> &'static str {
+    if cfg!(windows) {
+        tl(
+            "gts.sqlite bulunamadı. Tarama dosyasını sozluk.exe'nin yanına ya da %LOCALAPPDATA%\\sozluk klasörüne koyun ya da SOZLUK_DB'yi ayarlayın. Altyazı becerisinin kopyası kendiliğinden bulunur.",
+            "No gts.sqlite found. Put the crawl's file next to sozluk.exe or in %LOCALAPPDATA%\\sozluk, or set SOZLUK_DB. The subtitle skill's copy is found by itself.",
+        )
+    } else if cfg!(target_os = "macos") {
+        tl(
+            "gts.sqlite bulunamadı. Tarama dosyasını sozluk'un yanına ya da ~/Library/Application Support/sozluk klasörüne koyun ya da SOZLUK_DB'yi ayarlayın. Altyazı becerisinin kopyası kendiliğinden bulunur.",
+            "No gts.sqlite found. Put the crawl's file next to sozluk or in ~/Library/Application Support/sozluk, or set SOZLUK_DB. The subtitle skill's copy is found by itself.",
+        )
+    } else {
+        tl(
+            "gts.sqlite bulunamadı. Tarama dosyasını sozluk'un yanına ya da ~/.local/share/sozluk ($XDG_DATA_HOME/sozluk) klasörüne koyun ya da SOZLUK_DB'yi ayarlayın. Altyazı becerisinin kopyası kendiliğinden bulunur.",
+            "No gts.sqlite found. Put the crawl's file next to sozluk or in ~/.local/share/sozluk ($XDG_DATA_HOME/sozluk), or set SOZLUK_DB. The subtitle skill's copy is found by itself.",
+        )
+    }
 }
 
 fn status_text(s: &Sozluk) -> (bool, String) {
@@ -1788,9 +1814,10 @@ fn draw_pinned(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) -> f
             pal.accent,
             g.c.info_bg,
             g.c.info_line,
-            tl(
-                "Sözcükleri burada tutmak için yıldızla ya da Ctrl+D ile sabitleyin.",
-                "Pin a word with the star or Ctrl+D to keep it here.",
+            &tf!(
+                "Sözcükleri burada tutmak için yıldızla ya da {} ile sabitleyin.",
+                "Pin a word with the star or {} to keep it here.",
+                label("Ctrl+D")
             ),
         ) + 12.0;
     }
@@ -1944,10 +1971,17 @@ fn draw_database(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) ->
         11.5,
         card.x + 14.0,
         card.y + 172.0,
-        tl(
-            "Windows 11: çubukların ve yan bölmelerin arkasında, pencere etkinken.",
-            "Windows 11: behind the bars and side panes, while the window is active.",
-        ),
+        if cfg!(windows) {
+            tl(
+                "Windows 11: çubukların ve yan bölmelerin arkasında, pencere etkinken.",
+                "Windows 11: behind the bars and side panes, while the window is active.",
+            )
+        } else {
+            tl(
+                "Mica ve Akrilik yalnızca Windows 11'de var.",
+                "Mica and Acrylic are Windows 11 only.",
+            )
+        },
         pal.muted,
         card.w - 28.0,
     );
@@ -2042,7 +2076,7 @@ fn draw_database(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) ->
             card.x + 14.0,
             card.y + 54.0,
             card.w - 28.0,
-            tl("gts.sqlite bulunamadı. Tarama dosyasını sozluk.exe'nin yanına ya da %LOCALAPPDATA%\\sozluk klasörüne koyun ya da SOZLUK_DB'yi ayarlayın. Altyazı becerisinin kopyası kendiliğinden bulunur.", "No gts.sqlite found. Put the crawl's file next to sozluk.exe or in %LOCALAPPDATA%\\sozluk, or set SOZLUK_DB. The subtitle skill's copy is found by itself."),
+            no_db_text(),
             pal.muted,
         );
     }

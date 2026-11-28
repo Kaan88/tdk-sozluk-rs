@@ -31,6 +31,71 @@ pub fn is_capitalized(s: &str) -> bool {
     s.chars().next().is_some_and(char::is_uppercase)
 }
 
+/// Uppercase by Turkish rules: `i` → `İ`, `ı` → `I`.
+pub fn upper(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            'i' => out.push('İ'),
+            'ı' => out.push('I'),
+            _ => out.extend(c.to_uppercase()),
+        }
+    }
+    out
+}
+
+/// Whether a word is written in capitals: two letters or more, and none of them small.
+pub fn is_all_caps(s: &str) -> bool {
+    let letters = || s.chars().filter(|c| c.is_alphabetic());
+    letters().count() >= 2 && letters().all(char::is_uppercase)
+}
+
+/// The text of a file: UTF-8 or UTF-16 by its byte order mark, UTF-8 when it is valid UTF-8,
+/// and otherwise Windows-1254, the code page Turkish subtitles are written in when they are not
+/// UTF-8 (where ç ğ ı ö ş ü would otherwise all become U+FFFD).
+pub fn decode_text(bytes: &[u8]) -> String {
+    if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8_lossy(rest).into_owned();
+    }
+    fn utf16(rest: &[u8], unit: fn([u8; 2]) -> u16) -> String {
+        let units = rest.as_chunks::<2>().0.iter().map(|&b| unit(b));
+        char::decode_utf16(units)
+            .map(|c| c.unwrap_or(char::REPLACEMENT_CHARACTER))
+            .collect()
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+        return utf16(rest, u16::from_le_bytes);
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
+        return utf16(rest, u16::from_be_bytes);
+    }
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_owned(),
+        Err(_) => bytes.iter().map(|&b| cp1254(b)).collect(),
+    }
+}
+
+/// One Windows-1254 byte: Latin-1 but for six Turkish letters and the 0x80–0x9F block.
+fn cp1254(b: u8) -> char {
+    const NONE: char = char::REPLACEMENT_CHARACTER;
+    const HIGH: [char; 32] = [
+        '\u{20AC}', NONE, '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}',
+        '\u{02C6}', '\u{2030}', '\u{0160}', '\u{2039}', '\u{0152}', NONE, NONE, NONE, NONE,
+        '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}', '\u{2022}', '\u{2013}', '\u{2014}',
+        '\u{02DC}', '\u{2122}', '\u{0161}', '\u{203A}', '\u{0153}', NONE, NONE, '\u{0178}',
+    ];
+    match b {
+        0x80..=0x9F => HIGH[(b - 0x80) as usize],
+        0xD0 => 'Ğ',
+        0xDD => 'İ',
+        0xDE => 'Ş',
+        0xF0 => 'ğ',
+        0xFD => 'ı',
+        0xFE => 'ş',
+        _ => b as char,
+    }
+}
+
 /// The key that ignores circumflexes, case, spaces and hyphens: `Kâğıt` and `kağıt` meet, so do
 /// `yer altı` and `yeraltı`.
 pub fn fold(s: &str) -> String {
@@ -85,6 +150,45 @@ mod tests {
         assert_eq!(lower("IRMAK İzmir"), "ırmak izmir");
         assert_eq!(capitalize("istanbul"), "İstanbul");
         assert_eq!(capitalize("ılık"), "Ilık");
+    }
+
+    #[test]
+    fn capitals_by_turkish_rules() {
+        assert_eq!(upper("kâğıt istanbul ılık"), "KÂĞIT İSTANBUL ILIK");
+        assert!(is_all_caps("HERŞEY"));
+        assert!(is_all_caps("KAĞIT,"));
+        assert!(!is_all_caps("Herşey"));
+        assert!(
+            !is_all_caps("A"),
+            "one capital letter is a capitalized word"
+        );
+        assert!(!is_all_caps("12"));
+    }
+
+    #[test]
+    fn a_file_is_read_in_its_own_encoding() {
+        let word = "görüşürüz ılık İğne";
+        assert_eq!(decode_text(word.as_bytes()), word);
+        let bom: Vec<u8> = [0xEF, 0xBB, 0xBF]
+            .iter()
+            .chain(word.as_bytes())
+            .copied()
+            .collect();
+        assert_eq!(decode_text(&bom), word);
+        let le: Vec<u8> = [0xFF, 0xFE]
+            .into_iter()
+            .chain(word.encode_utf16().flat_map(u16::to_le_bytes))
+            .collect();
+        assert_eq!(decode_text(&le), word);
+        let be: Vec<u8> = [0xFE, 0xFF]
+            .into_iter()
+            .chain(word.encode_utf16().flat_map(u16::to_be_bytes))
+            .collect();
+        assert_eq!(decode_text(&be), word);
+        // The same text in Windows-1254.
+        let ansi = b"g\xF6r\xFC\xFE\xFCr\xFCz \xFDl\xFDk \xDD\xF0ne";
+        assert_eq!(decode_text(ansi), word);
+        assert_eq!(decode_text(b"\x80 \x93a\x94"), "\u{20AC} \u{201C}a\u{201D}");
     }
 
     #[test]

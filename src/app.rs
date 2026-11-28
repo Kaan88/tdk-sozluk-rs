@@ -190,6 +190,8 @@ pub enum Field {
 }
 
 const FIELD_SCROLL: &str = "field-scroll";
+/// The largest file a drop is checked from: a subtitle is a few hundred kilobytes, a film is not.
+const MAX_DROPPED: u64 = 8 << 20;
 
 /// A press in a field's box but outside its text (the magnifier, the padding) moved to the
 /// nearest end of the text, so it still places the caret there.
@@ -295,6 +297,10 @@ impl Sozluk {
             };
             self.tab = t;
             self.page_epoch += 1;
+            // Keys typed on another tab are not the check field's.
+            if t != Tab::Check {
+                self.check_focus = false;
+            }
             if t == Tab::Database {
                 self.refresh_counts();
             }
@@ -460,6 +466,8 @@ impl Sozluk {
 
     pub fn copy(&mut self, cx: &mut Cx<'_, Msg>, text: &str) {
         if platform::set_clipboard_text(text) {
+            // Our own copy is not new text for "Check what I copy".
+            self.last_clip = Some(text.to_string());
             let t = tf!(
                 "Kopyalandı: \u{201c}{text}\u{201d}",
                 "Copied \u{201c}{text}\u{201d}"
@@ -1368,6 +1376,8 @@ impl App for Sozluk {
             Event::Focus(on) => {
                 self.cancel_pointers(cx);
                 self.popup = None;
+                // A button held when the window lost the mouse does not act on a later release.
+                self.pressed = None;
                 // Back from another window with the open word in the box: typing replaces it.
                 if on && self.search_focus && !self.showing_results() {
                     self.search.select_all();
@@ -1404,19 +1414,32 @@ impl App for Sozluk {
             }
             _ => {}
         }
-        // A subtitle or text file dropped on the window is checked.
-        if let winit::event::WindowEvent::DroppedFile(path) = event
-            && let Ok(bytes) = std::fs::read(path)
-        {
-            let text = String::from_utf8_lossy(&bytes);
-            let text = crate::draw::subtitle_text(&text);
-            self.set_tab(Tab::Check);
-            self.check_field.set_text(text.lines().next().unwrap_or(""));
-            self.set_check_text(&text);
+        // A subtitle or text file dropped on the window is checked. Not a film dropped by
+        // mistake: it would be read whole on this thread.
+        if let winit::event::WindowEvent::DroppedFile(path) = event {
             let name = path
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
+            if std::fs::metadata(path).is_ok_and(|m| m.len() > MAX_DROPPED) {
+                self.toast(
+                    cx,
+                    &tf!(
+                        "Denetlenmedi, metin dosyası değil: {name}",
+                        "Not checked, not a text file: {name}"
+                    ),
+                );
+                cx.request_redraw_all();
+                return;
+            }
+            let Ok(bytes) = std::fs::read(path) else {
+                return;
+            };
+            let text = crate::turkish::decode_text(&bytes);
+            let text = crate::draw::subtitle_text(&text);
+            self.set_tab(Tab::Check);
+            self.check_field.set_text(text.lines().next().unwrap_or(""));
+            self.set_check_text(&text);
             self.toast(cx, &tf!("Denetleniyor: {name}", "Checking {name}"));
             cx.request_redraw_all();
         }

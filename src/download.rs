@@ -93,7 +93,7 @@ pub fn install(dir: &Path) -> Result<Snapshot, String> {
     let snap = pending(dir).ok_or("no downloaded dictionary is waiting")?;
     let (db, new, prev) = paths(dir);
     if db.exists() {
-        let _ = std::fs::remove_file(&prev);
+        // `rename` replaces the old `.prev`, so a failed swap keeps it.
         std::fs::rename(&db, &prev).map_err(|e| e.to_string())?;
     }
     if let Err(e) = std::fs::rename(&new, &db) {

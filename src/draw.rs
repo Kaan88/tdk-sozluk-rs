@@ -18,6 +18,7 @@ use crate::app::{Hit, Msg, Sozluk, Tab};
 use crate::check::Kind;
 use crate::dict::{Entry, Lookup};
 use crate::download::Event;
+use crate::history::Note;
 use crate::theme::{self, Colors, Mode};
 use crate::turkish::{letters, lower};
 use crate::widgets::{self as w, RADIUS};
@@ -598,7 +599,8 @@ fn draw_lookup(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect, full
             right.x - left.right() - 72.0,
             page.h,
         );
-        let h = draw_entry(s, g, p, mid, true);
+        let mut h = draw_entry(s, g, p, mid, true);
+        h += draw_notes(s, p, &g.c, mid.x, mid.y + h, mid.w);
         return h + 48.0;
     }
     if s.showing_results() {
@@ -624,6 +626,8 @@ fn draw_lookup(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect, full
             h += 28.0 + ch + 6.0;
         }
     }
+    // The foot of the page, after the synonyms.
+    h += draw_notes(s, p, &g.c, area.x, area.y + h, area.w);
     h + 24.0
 }
 
@@ -1038,7 +1042,12 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
             .into_iter()
             .map(str::to_string)
             .collect();
-    if !vars.is_empty() && !big {
+    // The old-spelling bar below already says as much of the same word.
+    let told = s
+        .old_spelling
+        .as_ref()
+        .is_some_and(|o| vars.first() == Some(&o.new));
+    if !vars.is_empty() && !big && !told {
         let v = &vars[0];
         let how = if v.contains(' ') != cur.contains(' ') {
             if v.contains(' ') {
@@ -1082,6 +1091,26 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
         g.row(p, open, Hit::Open(v.clone()));
         p.text_center(Face::Ui, 12.5, open, tl("Aç", "Open"), pal.accent);
         y += h + 14.0;
+    }
+
+    // A spelling TDK no longer has: where it went.
+    if let Some(old) = &s.old_spelling {
+        let h = w::infobar(
+            p,
+            &g.c,
+            x,
+            y,
+            wid - 52.0,
+            glyph::INFO,
+            pal.accent,
+            g.c.info_bg,
+            g.c.info_line,
+            &old.text(),
+        );
+        let open = Rect::new(x + wid - 48.0, y, 48.0, h);
+        g.row(p, open, Hit::Open(old.new.clone()));
+        p.text_center(Face::Ui, 12.5, open, tl("Aç", "Open"), pal.accent);
+        y += h + 10.0;
     }
 
     match s.lookup.clone() {
@@ -1302,6 +1331,59 @@ fn draw_entry(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, area: Rect, big: 
         }
     }
     y - area.y
+}
+
+/// How the entry used to read: a quiet box of one-line notes at the foot of the page, with a
+/// hairline border and muted ink. Returns the height used (0 when there is nothing to say).
+fn draw_notes(s: &Sozluk, p: &mut Painter, c: &Colors, x: f32, y: f32, wid: f32) -> f32 {
+    if s.notes.is_empty() {
+        return 0.0;
+    }
+    const SIZE: f32 = 12.0;
+    const PAD: f32 = 12.0;
+    const INDENT: f32 = 14.0;
+    const HEAD: f32 = 24.0;
+    let pal = c.pal;
+    let tw = wid - 2.0 * PAD - INDENT;
+    let texts: Vec<String> = s.notes.iter().map(Note::text).collect();
+    let heights: Vec<f32> = texts
+        .iter()
+        .map(|t| p.paragraph_height(Face::Ui, SIZE, tw, t).max(16.0) + 4.0)
+        .collect();
+    let top = y + 8.0;
+    let h = PAD + HEAD + heights.iter().sum::<f32>() + PAD - 4.0;
+    p.frame(Rect::new(x, top, wid, h), RADIUS, pal.page, pal.line);
+    p.icon(
+        glyph::RECENT,
+        13.0,
+        x + PAD + 6.0,
+        top + PAD + 6.0,
+        pal.muted,
+    );
+    p.text(
+        Face::Semibold,
+        SIZE,
+        x + PAD + 20.0,
+        top + PAD + 6.0,
+        tl("Değişiklikler", "Changes"),
+        pal.muted,
+        wid - 2.0 * PAD - 20.0,
+    );
+    let mut ny = top + PAD + HEAD;
+    for (t, th) in texts.iter().zip(&heights) {
+        p.text(
+            Face::Ui,
+            SIZE,
+            x + PAD + 4.0,
+            ny + 8.0,
+            "\u{2022}",
+            pal.muted,
+            10.0,
+        );
+        p.paragraph(Face::Ui, SIZE, x + PAD + INDENT, ny + 2.0, tw, t, pal.muted);
+        ny += th;
+    }
+    h + 8.0
 }
 
 // ---- Check ------------------------------------------------------------------------------------
@@ -2227,6 +2309,44 @@ fn draw_database(s: &mut Sozluk, g: &mut Pg<'_>, p: &mut Painter, page: Rect) ->
         Hit::DbFolder,
         false,
     );
+    y += card.h + 12.0;
+
+    // The history notes.
+    let missing = s.history.is_none();
+    let text_w = wid - 28.0;
+    let note_h = if missing {
+        p.paragraph_height(Face::Ui, 12.0, text_w, crate::history::missing_text()) + 8.0
+    } else {
+        0.0
+    };
+    let card = Rect::new(x, y, wid, 52.0 + note_h);
+    w::card(p, &g.c, card);
+    let tr = Rect::new(card.right() - 52.0, card.y + 16.0, 38.0, 20.0);
+    w::toggle(p, g.anim, &g.c, tr, s.prefs.history_notes, "history-notes");
+    p.text(
+        Face::Ui,
+        13.0,
+        card.x + 14.0,
+        tr.cy(),
+        tl("Geçmiş notları", "History notes"),
+        pal.text,
+        card.w - 80.0,
+    );
+    g.hit(
+        Rect::new(card.x, card.y + 6.0, card.w, 40.0),
+        Hit::DbHistory,
+    );
+    if missing {
+        p.paragraph(
+            Face::Ui,
+            12.0,
+            card.x + 14.0,
+            card.y + 48.0,
+            text_w,
+            crate::history::missing_text(),
+            pal.muted,
+        );
+    }
     y += card.h + 12.0;
 
     if let Some(path) = &s.store.crawl_path {

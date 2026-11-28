@@ -8,6 +8,7 @@ mod check;
 mod dict;
 mod download;
 mod draw;
+mod history;
 mod lang;
 mod prefs;
 mod theme;

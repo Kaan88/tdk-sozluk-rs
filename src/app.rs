@@ -20,6 +20,7 @@ use winit::window::WindowLevel;
 use crate::check::{self, Kind, Token};
 use crate::dict::{Index, Lookup, Store, fetch_live};
 use crate::download;
+use crate::history::{History, Note, OldSpelling};
 use crate::prefs::Prefs;
 use crate::theme::{Colors, Mode};
 use mdshared_app::backdrop::Backdrop;
@@ -91,6 +92,8 @@ pub enum Hit {
     DictAuto,
     /// Check for a newer offline dictionary now.
     DictCheck,
+    /// The notes on how an entry used to read, on or off.
+    DbHistory,
     Retry,
     Content,
 }
@@ -129,6 +132,11 @@ pub struct Sozluk {
 
     pub current: Option<String>,
     pub lookup: Lookup,
+    /// `history.sqlite`, when there is one.
+    pub history: Option<History>,
+    /// What it says of the open word: the box under the entry, and the bar for an old spelling.
+    pub notes: Vec<Note>,
+    pub old_spelling: Option<OldSpelling>,
     pub back: Vec<String>,
     pub forward: Vec<String>,
     pub live_tx: Option<Sender<String>>,
@@ -219,6 +227,7 @@ impl Sozluk {
             download::install_pending(d);
         }
         let store = Store::open(data_dir.as_deref());
+        let history = History::open(data_dir.as_deref());
         let mut s = Sozluk {
             ix,
             store,
@@ -236,6 +245,9 @@ impl Sozluk {
             results_for: String::new(),
             current: None,
             lookup: Lookup::Missing,
+            history,
+            notes: Vec::new(),
+            old_spelling: None,
             back: Vec::new(),
             forward: Vec::new(),
             live_tx: None,
@@ -339,6 +351,7 @@ impl Sozluk {
                 self.refresh_counts();
                 if let Some(w) = self.current.clone() {
                     self.lookup = self.store.lookup(&w);
+                    self.refresh_notes();
                     self.page_epoch += 1;
                 }
                 self.dict_busy = false;
@@ -388,6 +401,7 @@ impl Sozluk {
         }
         self.current = Some(w.to_string());
         self.lookup = self.store.lookup(w);
+        self.refresh_notes();
         self.live_error = None;
         self.prefs.visited(w);
         self.search.set_text(w);
@@ -398,6 +412,25 @@ impl Sozluk {
         self.page_dir = 0.0;
         self.page_epoch += 1;
         self.ask_live_if_missing();
+    }
+
+    /// Reads what the history says of the open word. Done when the lookup changes, not per frame.
+    pub fn refresh_notes(&mut self) {
+        self.notes.clear();
+        self.old_spelling = None;
+        let (Some(h), Some(w)) = (&self.history, &self.current) else {
+            return;
+        };
+        if !self.prefs.history_notes {
+            return;
+        }
+        match &self.lookup {
+            Lookup::Found(es) => self.notes = h.notes(w, es),
+            Lookup::NotFound | Lookup::Missing if !self.ix.contains(w) => {
+                self.old_spelling = h.old_spelling(w, |n| self.ix.contains(n));
+            }
+            _ => {}
+        }
     }
 
     pub fn ask_live_if_missing(&mut self) {
@@ -814,6 +847,7 @@ impl Sozluk {
                 self.refresh_counts();
                 if let Some(w) = self.current.clone() {
                     self.lookup = self.store.lookup(&w);
+                    self.refresh_notes();
                 }
                 self.toast(cx, tl("Veritabanı yeniden okundu", "Database read again"));
             }
@@ -822,6 +856,11 @@ impl Sozluk {
                 self.prefs.save();
             }
             Hit::DictCheck => self.start_dict(cx),
+            Hit::DbHistory => {
+                self.prefs.history_notes = !self.prefs.history_notes;
+                self.prefs.save();
+                self.refresh_notes();
+            }
             Hit::Retry => {
                 self.live_blocked_until = None;
                 self.live_error = None;
@@ -1109,6 +1148,7 @@ impl App for Sozluk {
                 self.store.remember(&w, json.as_deref());
                 if self.current.as_deref() == Some(w.as_str()) {
                     self.lookup = self.store.lookup(&w);
+                    self.refresh_notes();
                     self.page_epoch += 1;
                 }
             }
